@@ -1,27 +1,22 @@
 services:
 
-  postgres:
-    image: postgres:16
-    container_name: colegio-db
-    environment:
-      POSTGRES_DB: colegio
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-    ports:
-      - "5432:5432"
-
   backend:
     build: ./backend
     container_name: colegio-backend
+    restart: unless-stopped
     ports:
       - "8080:8080"
-    depends_on:
-      - postgres
 
   frontend:
     build: ./frontend
     container_name: colegio-frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
       - backend
+
+# Firebase:
+# - Firestore Database
+# - Firebase Authentication
+# - Firebase Cloud Messaging

@@ -1,34 +1,35 @@
-CREATE TABLE categories (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS preferences (
+  user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  email_notifications BOOLEAN NOT NULL DEFAULT TRUE,
+  push_notifications BOOLEAN NOT NULL DEFAULT TRUE,
+  categories TEXT[] NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE news (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    category_id INTEGER REFERENCES categories(id),
-    boe_url TEXT,
-    published_at DATE
+CREATE TABLE IF NOT EXISTS news (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  summary TEXT,
+  content TEXT NOT NULL,
+  source_url TEXT,
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE notifications (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    news_id INTEGER REFERENCES news(id),
-    sent BOOLEAN DEFAULT FALSE,
-    sent_at TIMESTAMP
+CREATE TABLE IF NOT EXISTS device_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  token TEXT NOT NULL UNIQUE,
+  user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE user_preferences (
-    user_id INTEGER REFERENCES users(id),
-    category_id INTEGER REFERENCES categories(id),
-    PRIMARY KEY (user_id, category_id)
-);
+CREATE INDEX IF NOT EXISTS news_published_at_idx ON news (published_at DESC);
+CREATE INDEX IF NOT EXISTS device_tokens_active_idx ON device_tokens (active);

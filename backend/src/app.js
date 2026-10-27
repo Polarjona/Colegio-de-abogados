@@ -1,8 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const { pool } = require('./db');
-const { comparePassword, createToken, hashPassword, requireAuth } = require('./auth');
-const { sendToDevices } = require('./firebase');
+const { getFirebase, sendToDevices, signInWithPassword } = require('./firebase');
+const { requireAuth } = require('./auth');
 
 const app = express();
 app.use(cors());
@@ -12,17 +11,23 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function userData(user, name) {
+  return {
+    uid: user.uid,
+    email: user.email,
+    name: name || user.displayName || null,
+    createdAt: new Date().toISOString()
+  };
+}
+
 app.get('/', (req, res) => {
-  res.json({ message: 'Marco Legal API funcionando' });
+  res.json({ message: 'Marco Legal API funcionando con Firebase' });
 });
 
 app.get('/health', async (req, res, next) => {
   try {
-    await pool.query('SELECT 1');
-    res.status(200).json({
-      status: 'OK',
-      message: 'Backend funcionando correctamente'
-    });
+    await getFirebase().db.collection('news').limit(1).get();
+    res.json({ status: 'OK', message: 'Firebase funcionando correctamente' });
   } catch (error) {
     next(error);
   }
@@ -30,42 +35,32 @@ app.get('/health', async (req, res, next) => {
 
 app.post('/register', async (req, res, next) => {
   const { email, password, name } = req.body || {};
-  if (!isNonEmptyString(email) || !isNonEmptyString(password) || password.length < 8) {
+  if (!isNonEmptyString(email) || !isNonEmptyString(password) || password.length < 6) {
     return res.status(400).json({
-      error: 'email and password are required; password must contain at least 8 characters'
+      error: 'email and password are required; password must contain at least 6 characters'
     });
   }
 
-  let client;
   try {
-    client = await pool.connect();
-    await client.query('BEGIN');
-    const passwordHash = await hashPassword(password);
-    const result = await client.query(
-      `INSERT INTO users (email, name, password_hash)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, name, created_at`,
-      [email.trim().toLowerCase(), isNonEmptyString(name) ? name.trim() : null, passwordHash]
-    );
-    const user = result.rows[0];
-    await client.query(
-      'INSERT INTO preferences (user_id) VALUES ($1)',
-      [user.id]
-    );
-    await client.query('COMMIT');
-    res.status(201).json({ user, token: createToken(user) });
+    const { auth, db } = getFirebase();
+    const user = await auth.createUser({
+      email: email.trim().toLowerCase(),
+      password,
+      displayName: isNonEmptyString(name) ? name.trim() : undefined
+    });
+    await db.collection('users').doc(user.uid).set(userData(user, name));
+    await db.collection('preferences').doc(user.uid).set({
+      emailNotifications: true,
+      pushNotifications: true,
+      categories: [],
+      updatedAt: new Date().toISOString()
+    });
+    res.status(201).json({ user: userData(user, name) });
   } catch (error) {
-    if (client) {
-      await client.query('ROLLBACK');
-    }
-    if (error.code === '23505') {
+    if (error.code === 'auth/email-already-exists') {
       return res.status(409).json({ error: 'An account with that email already exists' });
     }
     next(error);
-  } finally {
-    if (client) {
-      client.release();
-    }
   }
 });
 
@@ -76,32 +71,33 @@ app.post('/login', async (req, res, next) => {
   }
 
   try {
-    const result = await pool.query(
-      'SELECT id, email, name, password_hash, created_at FROM users WHERE email = $1',
-      [email.trim().toLowerCase()]
+    const credentials = await signInWithPassword(
+      email.trim().toLowerCase(),
+      password
     );
-    const user = result.rows[0];
-    if (!user || !(await comparePassword(password, user.password_hash))) {
+    const user = await getFirebase().auth.getUser(credentials.localId);
+    res.json({
+      user: userData(user),
+      token: credentials.idToken,
+      refreshToken: credentials.refreshToken
+    });
+  } catch (error) {
+    if (['INVALID_LOGIN_CREDENTIALS', 'EMAIL_NOT_FOUND', 'INVALID_PASSWORD']
+      .includes(error.code)) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
-
-    delete user.password_hash;
-    res.json({ user, token: createToken(user) });
-  } catch (error) {
     next(error);
   }
 });
 
 app.get('/news', async (req, res, next) => {
   try {
-    const result = await pool.query(
-      `SELECT id, title, summary, content, source_url, published_at
-       FROM news
-       WHERE published_at <= NOW()
-       ORDER BY published_at DESC
-       LIMIT 50`
-    );
-    res.json({ news: result.rows });
+    const snapshot = await getFirebase().db.collection('news')
+      .where('publishedAt', '<=', new Date().toISOString())
+      .orderBy('publishedAt', 'desc')
+      .limit(50)
+      .get();
+    res.json({ news: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) });
   } catch (error) {
     next(error);
   }
@@ -109,15 +105,11 @@ app.get('/news', async (req, res, next) => {
 
 app.get('/preferences', requireAuth, async (req, res, next) => {
   try {
-    const result = await pool.query(
-      `SELECT email_notifications, push_notifications, categories
-       FROM preferences WHERE user_id = $1`,
-      [req.user.sub]
-    );
-    if (result.rows.length === 0) {
+    const snapshot = await getFirebase().db.collection('preferences').doc(req.user.uid).get();
+    if (!snapshot.exists) {
       return res.status(404).json({ error: 'Preferences not found' });
     }
-    res.json({ preferences: result.rows[0] });
+    res.json({ preferences: snapshot.data() });
   } catch (error) {
     next(error);
   }
@@ -125,30 +117,61 @@ app.get('/preferences', requireAuth, async (req, res, next) => {
 
 app.put('/preferences', requireAuth, async (req, res, next) => {
   const { emailNotifications, pushNotifications, categories } = req.body || {};
-  if (
-    typeof emailNotifications !== 'boolean' ||
-    typeof pushNotifications !== 'boolean' ||
-    !Array.isArray(categories) ||
-    categories.some((category) => typeof category !== 'string')
-  ) {
-    return res.status(400).json({
-      error: 'emailNotifications, pushNotifications, and categories are required'
-    });
+  if (typeof emailNotifications !== 'boolean' ||
+      typeof pushNotifications !== 'boolean' ||
+      !Array.isArray(categories) ||
+      categories.some((category) => typeof category !== 'string')) {
+    return res.status(400).json({ error: 'Invalid notification preferences' });
   }
 
   try {
-    const result = await pool.query(
-      `INSERT INTO preferences (user_id, email_notifications, push_notifications, categories)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id) DO UPDATE SET
-         email_notifications = EXCLUDED.email_notifications,
-         push_notifications = EXCLUDED.push_notifications,
-         categories = EXCLUDED.categories,
-         updated_at = NOW()
-       RETURNING email_notifications, push_notifications, categories`,
-      [req.user.sub, emailNotifications, pushNotifications, categories]
-    );
-    res.json({ preferences: result.rows[0] });
+    const preferences = {
+      emailNotifications,
+      pushNotifications,
+      categories,
+      updatedAt: new Date().toISOString()
+    };
+    await getFirebase().db.collection('preferences').doc(req.user.uid).set(preferences);
+    res.json({ preferences });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/devices/token', requireAuth, async (req, res, next) => {
+  const { token } = req.body || {};
+  if (!isNonEmptyString(token) || token.trim().length > 4096) {
+    return res.status(400).json({ error: 'token is required and must be at most 4096 characters' });
+  }
+
+  try {
+    const device = {
+      token: token.trim(),
+      userId: req.user.uid,
+      active: true,
+      updatedAt: new Date().toISOString()
+    };
+    await getFirebase().db.collection('deviceTokens').doc(token.trim()).set(device);
+    res.status(201).json({ device });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/devices/token', requireAuth, async (req, res, next) => {
+  const { token } = req.body || {};
+  if (!isNonEmptyString(token)) {
+    return res.status(400).json({ error: 'token is required' });
+  }
+
+  try {
+    const ref = getFirebase().db.collection('deviceTokens').doc(token.trim());
+    const snapshot = await ref.get();
+    if (!snapshot.exists || snapshot.data().userId !== req.user.uid) {
+      return res.status(404).json({ error: 'Device token not found for this user' });
+    }
+    await ref.update({ active: false, updatedAt: new Date().toISOString() });
+    res.json({ device: { ...snapshot.data(), active: false } });
   } catch (error) {
     next(error);
   }
@@ -161,22 +184,28 @@ app.post('/notifications/send', requireAuth, async (req, res, next) => {
   }
 
   try {
-    const result = await pool.query(
-      'SELECT token FROM device_tokens WHERE active = TRUE'
-    );
-    if (result.rows.length === 0) {
-      return res.status(200).json({ sent: 0, failed: 0 });
+    const snapshot = await getFirebase().db.collection('deviceTokens')
+      .where('active', '==', true).get();
+    const devices = snapshot.docs.map((doc) => doc.data());
+    if (devices.length === 0) {
+      return res.json({ sent: 0, failed: 0 });
     }
 
     const response = await sendToDevices(
-      result.rows.map((row) => row.token),
+      devices.map((device) => device.token),
       { title: title.trim(), body: body.trim(), ...(data ? { data } : {}) }
     );
+    const batch = getFirebase().db.batch();
+    response.responses.forEach((result, index) => {
+      if (!result.success &&
+          ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']
+            .includes(result.error?.code)) {
+        batch.update(snapshot.docs[index].ref, { active: false });
+      }
+    });
+    await batch.commit();
     res.json({ sent: response.successCount, failed: response.failureCount });
   } catch (error) {
-    if (error.message === 'Firebase Cloud Messaging is not configured') {
-      return res.status(503).json({ error: error.message });
-    }
     next(error);
   }
 });

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../utils/app_theme.dart';
 import '../widgets/app_scaffold.dart';
@@ -84,8 +85,16 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
-            onPressed: () =>
-                Navigator.pushNamedAndRemoveUntil(context, '/welcome', (_) => false),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/welcome',
+                  (_) => false,
+                );
+              }
+            },
             icon: const Icon(Icons.logout_rounded),
             label: const Text('Cerrar sesión'),
             style: OutlinedButton.styleFrom(

@@ -1,18 +1,21 @@
-# Backend
+# Backend Firebase
 
-API REST del proyecto Colegio de Abogados.
+## Requisitos
 
-## Ejecutar
+- Node.js 20 o superior.
+- Proyecto Firebase con Authentication (correo/contraseña), Firestore y
+  Cloud Messaging habilitados.
 
-Desde esta carpeta:
+## Ejecución
 
-```shell
+```text
+cp .env.example .env
 npm install
-npm run dev
+npm start
 ```
 
 La API queda disponible en `http://localhost:8080` por defecto. Consulta
-[`./.env.example`](.env.example) para las variables necesarias.
+[`../.env.example`](.env.example) para las variables necesarias.
 
 ## Endpoints de prueba
 

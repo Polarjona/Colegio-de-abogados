@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Marco Legal",
+    "slug": "marco-legal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#142A3B"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "web": {
+      "bundler": "metro"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#142A3B"
+      }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-status-bar"
+    ]
+  }
+}

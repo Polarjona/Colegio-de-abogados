@@ -5,7 +5,7 @@ publicadas en el BOE.
 
 ## Estructura
 
-- `frontend/`: prototipo Flutter de la aplicacion movil.
+- `frontend/`: aplicacion React Native con Expo (Android, iOS y web).
 - `backend/`: API REST con Node.js y Express.
 - `database/`: esquema y datos iniciales de PostgreSQL.
 - `docs/`: documentacion tecnica y requisitos.
@@ -24,7 +24,7 @@ Esto inicia PostgreSQL, el backend y el frontend. Los servicios quedan
 disponibles en:
 
 - Frontend: <http://localhost:3000>
-- Backend: <http://localhost:8080>
+- Backend: <http://localhost:3006>
 - PostgreSQL: `localhost:5432` (base de datos `colegio`, usuario `postgres`,
   contrasena `postgres`)
 
@@ -44,6 +44,11 @@ El backend necesita `DATABASE_URL` y `JWT_SECRET`. En Docker Compose se
 configuran automaticamente; para ejecutarlo fuera de Docker, copia
 [`backend/.env.example`](backend/.env.example) a `backend/.env` y ajusta sus
 valores.
+
+Por defecto, Docker Compose usa el modo demo de Firebase para poder arrancar
+sin credenciales externas. Para usar Firebase real, configura las variables
+del archivo `.env` y establece `DEMO_MODE=false`. Si el puerto elegido está
+ocupado, usa `BACKEND_PORT=3007 docker compose up --build`.
 
 ## Ejecutar el backend sin Docker
 
@@ -65,7 +70,7 @@ estado y `GET /health` comprueba la conexion con PostgreSQL.
 
 ## Tecnologias
 
-- Flutter
+- React Native y Expo
 - Node.js y Express
 - PostgreSQL
 - Docker

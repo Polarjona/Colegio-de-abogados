@@ -23,7 +23,7 @@ class MarcoLegalApp extends StatelessWidget {
       title: 'Marco Legal',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      initialRoute: '/welcome',
+      initialRoute: '/login',
       routes: {
         '/welcome': (_) => const WelcomeScreen(),
         '/login': (_) => const LoginScreen(),

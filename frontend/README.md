@@ -6,11 +6,17 @@ son de demostración; no hay conexión al BOE, autenticación ni almacenamiento.
 
 ## Abrir y ejecutar
 
-1. Instala Flutter desde [flutter.dev](https://flutter.dev) y añade Flutter al
-   `PATH` de Windows.
-2. Abre esta carpeta (`frontend`) en Visual Studio Code.
-3. Instala las extensiones **Flutter** y **Dart** cuando VS Code lo sugiera.
-4. Abre Terminal > Nueva terminal y ejecuta:
+1. Instala Flutter desde [flutter.dev](https://flutter.dev), añade Flutter al
+   `PATH` de Windows y reinicia VS Code.
+2. Abre esta carpeta (`frontend`) en Visual Studio Code e instala las
+   extensiones **Flutter** y **Dart**.
+3. En Terminal > Nueva terminal, comprueba la instalación:
+
+   ```powershell
+   flutter doctor
+   ```
+
+4. Instala las dependencias y ejecuta la app:
 
    ```powershell
    flutter pub get
@@ -24,12 +30,15 @@ son de demostración; no hay conexión al BOE, autenticación ni almacenamiento.
 
 ## Recorrido de la demo
 
-- Bienvenida > **Comenzar** > Iniciar sesión > **Entrar** > Inicio.
+- La app abre directamente Iniciar sesión. Completa el correo y una contraseña
+  de al menos seis caracteres y pulsa **Entrar** para abrir Inicio.
+- Desde Perfil puedes cerrar sesión y volver a Bienvenida; **Comenzar** abre
+  Iniciar sesión.
 - En Inicio, abre **Ver todas**, toca una tarjeta para ver su detalle o usa el
   icono de controles para abrir las áreas jurídicas.
 - La barra inferior abre Inicio, Historial, Avisos y Perfil.
 - Desde Perfil puedes entrar a preferencias y áreas jurídicas, o cerrar sesión.
-- Para probar el registro, vuelve a la bienvenida y pulsa **Registrarme**.
+- Para probar el registro, vuelve a Bienvenida y pulsa **Registrarme**.
 
 El acceso y el registro validan campos localmente y entran con cualquier dato
 válido: son interacciones de prototipo, no cuentas reales.

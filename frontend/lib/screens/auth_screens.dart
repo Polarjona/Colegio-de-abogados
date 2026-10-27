@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../utils/app_theme.dart';
 import '../widgets/app_scaffold.dart';
@@ -22,9 +24,18 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _enter() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+  Future<void> _enter() async {
+    if (!_formKey.currentState!.validate()) return;
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+      }
+    } on FirebaseAuthException catch (error) {
+      _showAuthError(context, error);
     }
   }
 
@@ -102,9 +113,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _createAccount() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+  Future<void> _createAccount() async {
+    if (!_formKey.currentState!.validate()) return;
+    try {
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      await credential.user?.updateDisplayName(_name.text.trim());
+      final user = credential.user;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'email': user.email,
+          'name': _name.text.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        await FirebaseFirestore.instance
+            .collection('preferences')
+            .doc(user.uid)
+            .set({
+          'emailNotifications': true,
+          'pushNotifications': true,
+          'categories': <String>[],
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+      }
+    } on FirebaseAuthException catch (error) {
+      _showAuthError(context, error);
     }
   }
 
@@ -177,6 +217,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: const Text('Ya tengo cuenta · Iniciar sesión'),
       ),
     );
+  }
+
+  void _showAuthError(BuildContext context, FirebaseAuthException error) {
+    final message = switch (error.code) {
+      'email-already-in-use' => 'Ese correo ya tiene una cuenta.',
+      'invalid-credential' || 'wrong-password' || 'user-not-found' =>
+        'El correo o la contraseña no son correctos.',
+      'weak-password' => 'La contraseña es demasiado débil.',
+      _ => 'No se pudo completar la autenticación. Inténtalo de nuevo.'
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

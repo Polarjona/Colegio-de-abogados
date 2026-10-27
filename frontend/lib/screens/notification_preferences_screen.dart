@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../data/demo_updates.dart';
 import '../utils/app_theme.dart';
@@ -15,11 +17,41 @@ class NotificationPreferencesScreen extends StatefulWidget {
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   bool _allNotifications = true;
-  final Set<String> _enabledCategories = {
-    'Civil',
-    'Laboral',
-    'Administrativo',
-  };
+  Set<String> _enabledCategories = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('preferences')
+        .doc(user.uid)
+        .get();
+    final data = snapshot.data();
+    if (!mounted || data == null) return;
+    setState(() {
+      _allNotifications = data['pushNotifications'] as bool? ?? true;
+      _enabledCategories = Set<String>.from(
+        (data['categories'] as List<dynamic>?) ?? const [],
+      );
+    });
+  }
+
+  Future<void> _savePreferences() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('preferences').doc(user.uid).set({
+      'emailNotifications': true,
+      'pushNotifications': _allNotifications,
+      'categories': _enabledCategories.toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +79,10 @@ class _NotificationPreferencesScreenState
             title: 'Recibir notificaciones',
             subtitle: 'Activa o pausa todos los avisos.',
             value: _allNotifications,
-            onChanged: (value) => setState(() => _allNotifications = value),
+            onChanged: (value) {
+              setState(() => _allNotifications = value);
+              _savePreferences();
+            },
           ),
           const SizedBox(height: 18),
           const Text(
@@ -75,13 +110,14 @@ class _NotificationPreferencesScreenState
                           _enabledCategories.remove(category);
                         }
                       });
+                        _savePreferences();
                     }
                   : null,
             ),
           ),
           const SizedBox(height: 12),
           const Text(
-            'Las preferencias se guardan solo durante esta demostración.',
+            'Las preferencias se guardan en Firebase Firestore.',
             style: TextStyle(color: AppTheme.muted, fontSize: 12),
           ),
         ],

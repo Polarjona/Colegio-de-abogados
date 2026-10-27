@@ -12,7 +12,7 @@ npm run dev
 ```
 
 La API queda disponible en `http://localhost:8080` por defecto. Consulta
-[`../.env.example`](.env.example) para las variables necesarias.
+[`./.env.example`](.env.example) para las variables necesarias.
 
 ## Endpoints de prueba
 

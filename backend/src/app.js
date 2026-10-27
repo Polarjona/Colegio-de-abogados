@@ -2,8 +2,27 @@ const express = require('express');
 const cors = require('cors');
 const { getFirebase, sendToDevices, signInWithPassword } = require('./firebase');
 const { requireAuth } = require('./auth');
+const { getConfig } = require('./config');
 
 const app = express();
+const demoNews = [
+  {
+    id: 'demo-1',
+    title: 'Actualización de la Ley de Procedimiento Administrativo',
+    category: 'Administrativo',
+    summary: 'Cambios en los plazos y en la tramitación electrónica.',
+    publishedAt: new Date().toISOString(),
+    reference: 'BOE-A-2026-10482'
+  },
+  {
+    id: 'demo-2',
+    title: 'Modificación de medidas de protección laboral',
+    category: 'Laboral',
+    summary: 'Nuevas disposiciones sobre conciliación y protección laboral.',
+    publishedAt: new Date(Date.now() - 86400000).toISOString(),
+    reference: 'BOE-A-2026-10371'
+  }
+];
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
@@ -25,6 +44,9 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res, next) => {
+  if (getConfig().demo) {
+    return res.json({ status: 'OK', mode: 'demo', message: 'Backend funcionando en modo demo' });
+  }
   try {
     await getFirebase().db.collection('news').limit(1).get();
     res.json({ status: 'OK', message: 'Firebase funcionando correctamente' });
@@ -38,6 +60,13 @@ app.post('/register', async (req, res, next) => {
   if (!isNonEmptyString(email) || !isNonEmptyString(password) || password.length < 6) {
     return res.status(400).json({
       error: 'email and password are required; password must contain at least 6 characters'
+    });
+  }
+
+  if (getConfig().demo) {
+    return res.status(201).json({
+      user: { uid: 'demo-user', email: email.trim().toLowerCase(), name: name || 'Usuario demo' },
+      token: 'demo-token'
     });
   }
 
@@ -70,6 +99,14 @@ app.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
+  if (getConfig().demo) {
+    return res.json({
+      user: { uid: 'demo-user', email: email.trim().toLowerCase(), name: 'Usuario demo' },
+      token: 'demo-token',
+      refreshToken: 'demo-refresh-token'
+    });
+  }
+
   try {
     const credentials = await signInWithPassword(
       email.trim().toLowerCase(),
@@ -91,6 +128,9 @@ app.post('/login', async (req, res, next) => {
 });
 
 app.get('/news', async (req, res, next) => {
+  if (getConfig().demo) {
+    return res.json({ news: demoNews });
+  }
   try {
     const snapshot = await getFirebase().db.collection('news')
       .where('publishedAt', '<=', new Date().toISOString())
@@ -104,6 +144,15 @@ app.get('/news', async (req, res, next) => {
 });
 
 app.get('/preferences', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) {
+    return res.json({
+      preferences: {
+        emailNotifications: true,
+        pushNotifications: true,
+        categories: ['Civil', 'Penal', 'Laboral']
+      }
+    });
+  }
   try {
     const snapshot = await getFirebase().db.collection('preferences').doc(req.user.uid).get();
     if (!snapshot.exists) {
@@ -122,6 +171,10 @@ app.put('/preferences', requireAuth, async (req, res, next) => {
       !Array.isArray(categories) ||
       categories.some((category) => typeof category !== 'string')) {
     return res.status(400).json({ error: 'Invalid notification preferences' });
+  }
+
+  if (getConfig().demo) {
+    return res.json({ preferences: { emailNotifications, pushNotifications, categories } });
   }
 
   try {

@@ -6,6 +6,12 @@
 - Proyecto Firebase con Authentication (correo/contraseña), Firestore y
   Cloud Messaging habilitados.
 
+Docker Compose carga automáticamente `backend/.env`. Si no hay credenciales
+Firebase completas, arranca por defecto en modo demo (`DEMO_MODE=true`) para
+poder probar la aplicación localmente. Este modo
+expone noticias y autenticación de prueba en memoria; no debe usarse en
+producción.
+
 ## Ejecución
 
 ```text
@@ -14,7 +20,9 @@ npm install
 npm start
 ```
 
-La API queda disponible en `http://localhost:8080` por defecto. Consulta
+La API queda disponible en `http://localhost:8080` al ejecutar el backend
+directamente. En Docker Compose se publica en `http://localhost:3006` por
+defecto. Consulta
 [`../.env.example`](.env.example) para las variables necesarias.
 
 ## Endpoints de prueba

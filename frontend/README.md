@@ -1,39 +1,41 @@
-# Marco Legal — prototipo Flutter
+# Marco Legal — React Native
 
-Prototipo móvil del Día 1: bienvenida, acceso, registro, inicio, novedades,
-detalle, filtros, historial, perfil y preferencias de notificaciones. Los datos
-son de demostración; no hay conexión al BOE, autenticación ni almacenamiento.
+Aplicación móvil multiplataforma construida con React Native y Expo. Incluye
+acceso y registro mediante la API, inicio, novedades, detalle, filtros,
+historial, avisos, perfil y preferencias.
+
+La autenticación, las novedades y las preferencias se consumen desde la API
+del backend. El botón de consulta al BOE lo indica explícitamente cuando aún
+no hay un enlace oficial asociado.
 
 ## Abrir y ejecutar
 
-1. Instala Flutter desde [flutter.dev](https://flutter.dev), añade Flutter al
-   `PATH` de Windows y reinicia VS Code.
-2. Abre esta carpeta (`frontend`) en Visual Studio Code e instala las
-   extensiones **Flutter** y **Dart**.
-3. En Terminal > Nueva terminal, comprueba la instalación:
+1. Instala Node.js 20 o superior y Expo CLI (opcional):
 
-   ```powershell
-   flutter doctor
+   ```shell
+   npm install
    ```
 
-4. Instala las dependencias y ejecuta la app:
+2. Ejecuta la aplicación:
 
-   ```powershell
-   flutter pub get
-   flutter run
+   ```shell
+   npm start
    ```
 
-5. Para elegir un móvil virtual, abre la paleta de comandos con `Ctrl+Shift+P`,
-   busca **Flutter: Select Device** y selecciona un emulador. Si todavía no
-   tienes uno, crea un dispositivo virtual Android desde Android Studio > Device
-   Manager.
+   Usa `a` para Android, `i` para iOS o `w` para web en la terminal de Expo.
+   También puedes ejecutar directamente `npm run web`.
+
+La aplicación consume el backend mediante `EXPO_PUBLIC_API_URL`. Para web y
+simuladores, `http://localhost:3006` es el valor predeterminado. En un
+emulador Android usa `http://10.0.2.2:3006`; en un teléfono físico usa la IP
+LAN del ordenador. Puedes copiar [`.env.example`](.env.example) como `.env`
+y ajustar esa URL antes de ejecutar Expo.
 
 ## Recorrido de la demo
 
-- La app abre directamente Iniciar sesión. Completa el correo y una contraseña
+- La app abre directamente Iniciar sesión. Completa un correo y una contraseña
   de al menos seis caracteres y pulsa **Entrar** para abrir Inicio.
-- Desde Perfil puedes cerrar sesión y volver a Bienvenida; **Comenzar** abre
-  Iniciar sesión.
+- Desde Perfil puedes cerrar sesión y volver a Iniciar sesión.
 - En Inicio, abre **Ver todas**, toca una tarjeta para ver su detalle o usa el
   icono de controles para abrir las áreas jurídicas.
 - La barra inferior abre Inicio, Historial, Avisos y Perfil.
@@ -46,20 +48,13 @@ válido: son interacciones de prototipo, no cuentas reales.
 ## Estructura
 
 ```text
-lib/
-├── data/       # Publicaciones de ejemplo
-├── models/     # Modelo LegalUpdate
-├── screens/    # Pantallas de la app
-├── utils/      # Tema y paleta
-├── widgets/    # Componentes reutilizables
-└── main.dart   # Inicio y rutas
+App.js          # Navegación, pantallas y componentes React Native
+app.json        # Configuración Expo para Android, iOS y web
+babel.config.js # Configuración Metro/Babel
+Dockerfile      # Exportación web y servidor estático
 ```
 
 ## Llevar el diseño a Figma
 
-La app está preparada para visualizarse en un emulador Android. Para recrearla
-en Figma: crea un archivo, pulsa `F` y elige un frame Android de unos 360 ×
-800 px; crea un frame por pantalla con los mismos nombres que las pantallas de
-`lib/screens/`; reproduce la paleta azul marino, dorado y fondo marfil. En la
-pestaña **Prototype**, conecta los botones siguiendo el recorrido anterior.
-Este repositorio no crea ni modifica archivos dentro de tu cuenta de Figma.
+La app usa una paleta azul marino, dorado y fondo marfil, y se adapta a
+teléfonos y a la vista web.

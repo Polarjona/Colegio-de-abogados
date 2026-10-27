@@ -14,9 +14,14 @@ npm install
 npm start
 ```
 
-La API no requiere PostgreSQL ni otro servidor de base de datos. Las variables
-de `backend/.env.example` se obtienen desde Firebase Console.
+La API queda disponible en `http://localhost:8080` por defecto. Consulta
+[`../.env.example`](.env.example) para las variables necesarias.
 
-El endpoint `/login` usa `FIREBASE_WEB_API_KEY` para la API de Identity
-Toolkit. Esta clave no es una credencial privada; las credenciales Admin sí lo
-son y deben mantenerse fuera del control de versiones.
+## Endpoints de prueba
+
+- `GET /` devuelve `Marco Legal API funcionando`.
+- `GET /health` comprueba la conexión con PostgreSQL y devuelve el estado del
+  backend.
+
+El backend también se puede iniciar junto con PostgreSQL desde la raíz con
+`docker compose up --build`.

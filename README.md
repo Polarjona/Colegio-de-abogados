@@ -8,6 +8,7 @@ publicadas en el BOE.
 - `frontend/`: aplicacion React Native con Expo (Android, iOS y web).
 - `backend/`: API REST con Node.js y Express.
 - `database/`: esquema y datos iniciales de Firebase.
+- `functions/`: importación horaria del BOE y envío de notificaciones.
 - `docs/`: documentacion tecnica y requisitos.
 
 ## Ejecutar con Docker
@@ -74,3 +75,9 @@ estado y `GET /health` comprueba la conexion con Firebase.
 - Firebase
 - Docker
 - GitHub Actions
+
+## Importación automática del BOE
+
+Consulta [`docs/backend.md`](docs/backend.md) para configurar el workflow de
+GitHub Actions, que revisa el BOE cada hora e informa de las novedades nuevas
+según las preferencias de cada usuario sin requerir el plan Blaze.

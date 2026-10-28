@@ -63,8 +63,13 @@ async function registerPushToken(token) {
       sound: 'default',
     });
   }
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
-  const pushToken = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId
+    || Constants.easConfig?.projectId
+    || process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+  if (!projectId) {
+    throw new Error('Falta configurar EXPO_PUBLIC_EAS_PROJECT_ID o extra.eas.projectId');
+  }
+  const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
   await apiRequest('/devices/token', {
     method: 'POST',
     body: JSON.stringify({ token: pushToken.data, provider: 'expo' }),

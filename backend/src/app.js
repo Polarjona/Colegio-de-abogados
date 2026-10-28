@@ -154,7 +154,12 @@ app.get('/preferences', requireAuth, async (req, res, next) => {
     });
   }
   try {
-    const snapshot = await getFirebase().db.collection('preferences').doc(req.user.uid).get();
+    const { db } = getFirebase();
+    let snapshot = await db.collection('preferences').doc(req.user.uid).get();
+    if (!snapshot.exists) {
+      const matches = await db.collection('preferences').where('uid', '==', req.user.uid).limit(1).get();
+      snapshot = matches.docs[0] || snapshot;
+    }
     if (!snapshot.exists) {
       return res.status(404).json({ error: 'Preferences not found' });
     }
@@ -184,7 +189,13 @@ app.put('/preferences', requireAuth, async (req, res, next) => {
       categories,
       updatedAt: new Date().toISOString()
     };
-    await getFirebase().db.collection('preferences').doc(req.user.uid).set(preferences);
+    const { db } = getFirebase();
+    const canonicalRef = db.collection('preferences').doc(req.user.uid);
+    await canonicalRef.set(preferences, { merge: true });
+    const legacy = await db.collection('preferences').where('uid', '==', req.user.uid).limit(1).get();
+    if (!legacy.empty && legacy.docs[0].id !== req.user.uid) {
+      await legacy.docs[0].ref.set(preferences, { merge: true });
+    }
     res.json({ preferences });
   } catch (error) {
     next(error);
@@ -192,14 +203,18 @@ app.put('/preferences', requireAuth, async (req, res, next) => {
 });
 
 app.post('/devices/token', requireAuth, async (req, res, next) => {
-  const { token } = req.body || {};
+  const { token, provider = 'fcm' } = req.body || {};
   if (!isNonEmptyString(token) || token.trim().length > 4096) {
     return res.status(400).json({ error: 'token is required and must be at most 4096 characters' });
+  }
+  if (!['expo', 'fcm'].includes(provider)) {
+    return res.status(400).json({ error: 'provider must be expo or fcm' });
   }
 
   try {
     const device = {
       token: token.trim(),
+      provider,
       userId: req.user.uid,
       active: true,
       updatedAt: new Date().toISOString()

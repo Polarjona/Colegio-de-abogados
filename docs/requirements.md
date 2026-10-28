@@ -11,5 +11,5 @@
 ## No funcionales
 
 - Aplicación móvil
-- Base de datos PostgreSQL
+- Firebase Authentication, Cloud Firestore y Firebase Cloud Messaging
 - Backend API REST

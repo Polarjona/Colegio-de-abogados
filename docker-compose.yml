@@ -4,8 +4,13 @@ services:
     build: ./backend
     container_name: colegio-backend
     restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT:-3006}:8080"
+    environment:
+      PORT: 8080
 
   frontend:
     build: ./frontend
@@ -16,7 +21,7 @@ services:
     depends_on:
       - backend
 
-# Firebase:
-# - Firestore Database
+# Firebase services used:
 # - Firebase Authentication
+# - Cloud Firestore
 # - Firebase Cloud Messaging

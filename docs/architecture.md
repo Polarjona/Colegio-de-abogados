@@ -12,7 +12,7 @@ Flutter -> API Express -> Firebase Authentication
 
 - **Authentication:** registro y login con correo y contraseña.
 - **Cloud Firestore:** colecciones `users`, `preferences`, `news` y
-  `deviceTokens`.
+  `deviceTokens`, `notifications` e `history`.
 - **Cloud Messaging:** notificaciones push.
 - **Firebase Admin SDK:** acceso seguro del backend a los servicios anteriores.
 
@@ -35,6 +35,10 @@ Las rutas protegidas reciben `Authorization: Bearer <Firebase ID token>`.
 | POST | `/devices/token` | Firebase | Registrar token FCM |
 | DELETE | `/devices/token` | Firebase | Desactivar token FCM |
 | POST | `/notifications/send` | Firebase | Enviar una notificación mediante FCM |
+| GET | `/notifications` | Firebase | Listar avisos del usuario |
+| PATCH | `/notifications/:id/read` | Firebase | Marcar un aviso como leído |
+| GET | `/history` | Firebase | Listar publicaciones consultadas |
+| PUT | `/history/:newsId` | Firebase | Registrar una consulta |
 
 ## Configuración
 

@@ -1,0 +1,6 @@
+Logo source: Tabler Icons, "scale" icon
+Source: https://github.com/tabler/tabler-icons
+License: MIT
+
+The SVG source is kept alongside the generated PNG. The PNG is recolored
+to the Marco Legal gold palette for use in the application.

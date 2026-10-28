@@ -13,7 +13,17 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const colors = {
   navy: '#142A3B',
@@ -37,6 +47,29 @@ const updates = [
 ];
 const categories = ['Civil', 'Penal', 'Laboral', 'Mercantil', 'Administrativo', 'Fiscal'];
 const API_URL = process.env.EXPO_PUBLIC_API_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:3006' : 'http://localhost:3006');
+
+async function registerPushToken(token) {
+  if (Platform.OS === 'web') return;
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let status = existingStatus;
+  if (status !== 'granted') {
+    ({ status } = await Notifications.requestPermissionsAsync());
+  }
+  if (status !== 'granted') return;
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Novedades BOE',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+    });
+  }
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+  const pushToken = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+  await apiRequest('/devices/token', {
+    method: 'POST',
+    body: JSON.stringify({ token: pushToken.data, provider: 'expo' }),
+  }, token);
+}
 
 async function apiRequest(path, options = {}, token) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -227,6 +260,11 @@ export default function App() {
       ]);
       setUpdatesFromApi(normalizeNews(newsPayload.news || []));
       setPreferences(preferencesPayload.preferences);
+      try {
+        await registerPushToken(payload.token);
+      } catch (registrationError) {
+        console.error('No se pudo registrar el token de notificaciones', registrationError);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally { setLoading(false); }

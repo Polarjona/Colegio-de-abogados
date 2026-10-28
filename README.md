@@ -7,7 +7,7 @@ publicadas en el BOE.
 
 - `frontend/`: aplicacion React Native con Expo (Android, iOS y web).
 - `backend/`: API REST con Node.js y Express.
-- `database/`: esquema y datos iniciales de PostgreSQL.
+- `database/`: esquema y datos iniciales de Firebase.
 - `docs/`: documentacion tecnica y requisitos.
 
 ## Ejecutar con Docker
@@ -25,8 +25,7 @@ disponibles en:
 
 - Frontend: <http://localhost:3000>
 - Backend: <http://localhost:3006>
-- PostgreSQL: `localhost:5432` (base de datos `colegio`, usuario `postgres`,
-  contrasena `postgres`)
+
 
 Para detener los contenedores:
 
@@ -59,7 +58,7 @@ npm run dev
 ```
 
 La API se inicia en <http://localhost:8080>. `GET /` devuelve un mensaje de
-estado y `GET /health` comprueba la conexion con PostgreSQL.
+estado y `GET /health` comprueba la conexion con Firebase.
 
 ## Equipo
 
@@ -72,6 +71,6 @@ estado y `GET /health` comprueba la conexion con PostgreSQL.
 
 - React Native y Expo
 - Node.js y Express
-- PostgreSQL
+- Firebase
 - Docker
 - GitHub Actions

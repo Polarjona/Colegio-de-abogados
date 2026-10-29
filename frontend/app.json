@@ -5,27 +5,37 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/marco-legal-logo.png",
     "splash": {
+      "image": "./assets/marco-legal-logo.png",
+      "resizeMode": "contain",
       "backgroundColor": "#142A3B"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/marco-legal-logo.png"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/marco-legal-logo.png",
         "backgroundColor": "#142A3B"
       }
     },
     "plugins": [
       "expo-asset",
-      "expo-status-bar",
-      "expo-notifications"
-    ]
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "226b8b86-26b3-49bd-be87-7ed5d49226ef"
+      }
+    },
+    "owner": "polarjonas-team"
   }
 }

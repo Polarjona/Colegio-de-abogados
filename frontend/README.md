@@ -10,10 +10,10 @@ no hay un enlace oficial asociado.
 
 ## Abrir y ejecutar
 
-1. Instala Node.js 20 o superior y Expo CLI (opcional):
+1. Instala Node.js 20 o superior:
 
    ```shell
-   npm install
+   npm ci
    ```
 
 2. Ejecuta la aplicación:
@@ -25,11 +25,29 @@ no hay un enlace oficial asociado.
    Usa `a` para Android, `i` para iOS o `w` para web en la terminal de Expo.
    También puedes ejecutar directamente `npm run web`.
 
-La aplicación consume el backend mediante `EXPO_PUBLIC_API_URL`. Para web y
-simuladores, `http://localhost:3006` es el valor predeterminado. En un
-emulador Android usa `http://10.0.2.2:3006`; en un teléfono físico usa la IP
-LAN del ordenador. Puedes copiar [`.env.example`](.env.example) como `.env`
-y ajustar esa URL antes de ejecutar Expo.
+La aplicación consume el backend mediante `EXPO_PUBLIC_API_URL`. Para
+desarrollo local usa `http://localhost:3006` (o `http://10.0.2.2:3006` en un
+emulador Android). En un teléfono físico, crea un túnel para el backend:
+
+```shell
+cloudflared tunnel --url http://localhost:3006
+```
+
+Copia la URL `https://...trycloudflare.com` generada y configúrala en
+`.env`:
+
+```shell
+printf 'EXPO_PUBLIC_API_URL=https://TU-URL.trycloudflare.com\n' > .env
+```
+
+Después inicia Expo con su propio túnel:
+
+```shell
+npx expo start --tunnel
+```
+
+El túnel de Cloudflare y Expo deben permanecer abiertos. La URL temporal de
+Cloudflare cambia al crear un túnel nuevo.
 
 ## Recorrido de la demo
 

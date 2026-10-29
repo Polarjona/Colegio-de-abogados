@@ -127,6 +127,42 @@ app.post('/login', async (req, res, next) => {
   }
 });
 
+app.put('/profile', requireAuth, async (req, res, next) => {
+  const { name } = req.body || {};
+  if (!isNonEmptyString(name) || name.trim().length > 100) {
+    return res.status(400).json({ error: 'name is required and must be at most 100 characters' });
+  }
+  const cleanName = name.trim();
+  if (getConfig().demo) {
+    return res.json({ user: { uid: req.user.uid, email: req.user.email, name: cleanName } });
+  }
+  try {
+    const { auth, db } = getFirebase();
+    const user = await auth.updateUser(req.user.uid, { displayName: cleanName });
+    await db.collection('users').doc(user.uid).set({ name: cleanName }, { merge: true });
+    res.json({ user: userData(user, cleanName) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/profile', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) {
+    return res.json({ user: { uid: req.user.uid, email: req.user.email, name: req.user.name || 'Usuario demo' } });
+  }
+  try {
+    const { auth, db } = getFirebase();
+    const user = await auth.getUser(req.user.uid);
+    const snapshot = await db.collection('users').doc(req.user.uid).get();
+    const name = snapshot.exists && isNonEmptyString(snapshot.data().name)
+      ? snapshot.data().name.trim()
+      : user.displayName;
+    res.json({ user: userData(user, name) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/news', async (req, res, next) => {
   if (getConfig().demo) {
     return res.json({ news: demoNews });

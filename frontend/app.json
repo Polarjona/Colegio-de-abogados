@@ -1,30 +1,30 @@
 {
   "expo": {
-    "name": "Marco Legal",
+    "name": "ICAT Tarragona",
     "slug": "marco-legal",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./assets/marco-legal-logo.png",
+    "icon": "./assets/icat-logo.png",
     "splash": {
-      "image": "./assets/marco-legal-logo.png",
+      "image": "./assets/icat-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#142A3B"
+      "backgroundColor": "#F5F3F2"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/marco-legal-logo.png"
+      "favicon": "./assets/icat-logo.png"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/marco-legal-logo.png",
-        "backgroundColor": "#142A3B"
+        "foregroundImage": "./assets/icat-logo.png",
+        "backgroundColor": "#F5F3F2"
       }
     },
     "plugins": [

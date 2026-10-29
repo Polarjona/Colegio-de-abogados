@@ -5,6 +5,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -60,6 +61,11 @@ const updates = [
   { title: 'Revisión de disposiciones del Código Penal', category: 'Penal', date: '15 oct 2026', summary: 'Publicación de cambios y disposiciones complementarias en materia penal.', reference: 'BOE-A-2026-09133' },
 ];
 const categories = ['Civil', 'Penal', 'Laboral', 'Mercantil', 'Administrativo', 'Fiscal'];
+const sortModes = [
+  { value: 'newest', label: 'Más nuevas' },
+  { value: 'oldest', label: 'Más antiguas' },
+  { value: 'alphabetical', label: 'A-Z' },
+];
 const API_URL = process.env.EXPO_PUBLIC_API_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:3006' : 'http://localhost:3006');
 
 async function registerPushToken(token) {
@@ -110,15 +116,85 @@ function normalizeNews(items) {
   }));
 }
 
+function displayText(value, fallback = '') {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback;
+}
+
+function normalizeNotifications(items) {
+  return items.map((item) => ({
+    ...item,
+    title: displayText(item.title, 'Nueva publicación del BOE'),
+    summary: displayText(item.summary),
+    category: displayText(item.category, 'General'),
+    updatedAt: displayText(item.updatedAt),
+    sentAt: displayText(item.sentAt),
+    newsId: displayText(item.newsId),
+  }));
+}
+
 function formatDate(value) {
   if (!value) return 'Sin fecha';
+  if (typeof value === 'object' && typeof value.toDate === 'function') {
+    value = value.toDate();
+  }
+  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) {
+    return 'Sin fecha';
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function sortUpdates(items, mode) {
+  return [...items].sort((a, b) => {
+    if (mode === 'alphabetical') {
+      return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
+    }
+    const aTime = Date.parse(a.publishedAt || a.date || '');
+    const bTime = Date.parse(b.publishedAt || b.date || '');
+    const aValue = Number.isNaN(aTime) ? 0 : aTime;
+    const bValue = Number.isNaN(bTime) ? 0 : bTime;
+    return mode === 'newest' ? bValue - aValue : aValue - bValue;
+  });
+}
+
 function Icon({ name, size = 22, color = colors.navy }) {
   return <Ionicons name={name} size={size} color={color} />;
+}
+
+function SortControl({ mode, onSelect }) {
+  const current = sortModes.find((item) => item.value === mode) || sortModes[0];
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.sortControl}>
+      <Pressable
+        accessibilityLabel={`Ordenar: ${current.label}`}
+        accessibilityRole="button"
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => [styles.sortButton, pressed && styles.pressed]}
+      >
+        <Icon name="swap-vertical-outline" size={18} color={colors.navy} />
+        <Text style={styles.sortButtonLabel}>{current.label}</Text>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.navy} />
+      </Pressable>
+      {open && <View style={styles.sortMenu}>
+        {sortModes.map((item) => (
+          <Pressable
+            key={item.value}
+            accessibilityRole="button"
+            onPress={() => {
+              onSelect(item.value);
+              setOpen(false);
+            }}
+            style={({ pressed }) => [styles.sortOption, pressed && styles.pressed]}
+          >
+            <Text style={[styles.sortOptionLabel, item.value === mode && styles.sortOptionSelected]}>{item.label}</Text>
+            {item.value === mode && <Icon name="checkmark" size={17} color={colors.gold} />}
+          </Pressable>
+        ))}
+      </View>}
+    </View>
+  );
 }
 
 function Button({ children, onPress, variant = 'primary', disabled = false }) {
@@ -166,14 +242,15 @@ function UpdateCard({ update, onPress }) {
 function Home({ navigate, updates, loading, error, onRefresh }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState('Todas');
-  const filtered = updates.filter((item) => (
+  const [sortMode, setSortMode] = useState('newest');
+  const filtered = sortUpdates(updates.filter((item) => (
     (selected === 'Todas' || item.category === selected)
     && item.title.toLowerCase().includes(query.toLowerCase())
-  ));
+  )), sortMode);
   return <Screen withNav active={0} navigate={navigate} refreshing={loading} onRefresh={onRefresh}>
     <View style={styles.homeHero}><View style={styles.greeting}><Text style={styles.eyebrow}>COLEGIO DE ABOGADOS</Text><Text style={styles.pageTitle}>Novedades para ti</Text><Text style={styles.subtitle}>La actualidad jurídica, siempre al día.</Text></View><View style={styles.heroSeal}><Image source={APP_LOGO} style={styles.heroLogo} resizeMode="contain" /></View></View>
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Publicaciones</Text><Text style={styles.countText}>{filtered.length} resultados</Text></View>
-    <View style={styles.searchBox}><Icon name="search-outline" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Buscar publicaciones" placeholderTextColor={colors.muted} style={styles.searchInput} /></View>
+    <View style={styles.searchRow}><View style={styles.searchBox}><Icon name="search-outline" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Buscar publicaciones" placeholderTextColor={colors.muted} style={styles.searchInput} /></View><SortControl mode={sortMode} onSelect={setSortMode} /></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{['Todas', ...categories].map((category) => <Pressable key={category} onPress={() => setSelected(category)} style={[styles.chip, selected === category && styles.chipSelected]}><Text style={[styles.chipText, selected === category && styles.chipTextSelected]}>{category}</Text></Pressable>)}</ScrollView>
     {loading && <Text style={styles.statusText}>Cargando publicaciones...</Text>}
     {error && <Text style={styles.errorText}>{error}</Text>}
@@ -184,10 +261,11 @@ function Home({ navigate, updates, loading, error, onRefresh }) {
 function News({ navigate, updates, loading, error }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState('Todas');
-  const filtered = updates.filter((item) => (selected === 'Todas' || item.category === selected) && item.title.toLowerCase().includes(query.toLowerCase()));
+  const [sortMode, setSortMode] = useState('newest');
+  const filtered = sortUpdates(updates.filter((item) => (selected === 'Todas' || item.category === selected) && item.title.toLowerCase().includes(query.toLowerCase())), sortMode);
   return <Screen withNav active={0} navigate={navigate}>
     <Header title="Novedades" action={() => navigate('filters')} actionIcon="options-outline" />
-    <View style={styles.searchBox}><Icon name="search-outline" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Buscar publicaciones" placeholderTextColor={colors.muted} style={styles.searchInput} /></View>
+    <View style={styles.searchRow}><View style={styles.searchBox}><Icon name="search-outline" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Buscar publicaciones" placeholderTextColor={colors.muted} style={styles.searchInput} /></View><SortControl mode={sortMode} onSelect={setSortMode} /></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{['Todas', ...categories].map((category) => <Pressable key={category} onPress={() => setSelected(category)} style={[styles.chip, selected === category && styles.chipSelected]}><Text style={[styles.chipText, selected === category && styles.chipTextSelected]}>{category}</Text></Pressable>)}</ScrollView>
     {loading && <Text style={styles.statusText}>Cargando publicaciones...</Text>}
     {error && <Text style={styles.errorText}>{error}</Text>}
@@ -233,7 +311,11 @@ function History({ navigate, history, updates, loading, error }) {
   return <Screen withNav active={1} navigate={navigate}><View style={styles.greeting}><Text style={styles.eyebrow}>TU ACTIVIDAD</Text><Text style={styles.pageTitle}>Historial</Text><Text style={styles.subtitle}>Publicaciones que has consultado recientemente.</Text></View>{loading && <Text style={styles.statusText}>Cargando historial...</Text>}{error && <Text style={styles.errorText}>{error}</Text>}{!loading && !error && (viewed.length ? viewed.map((update) => <UpdateCard key={update.reference} update={update} onPress={() => navigate('detail', update)} />) : <EmptyState icon="time-outline" title="Todavía no hay historial" text="Cuando abras una publicación aparecerá aquí." />)}</Screen>;
 }
 
-function Alerts({ navigate, token, preferences, onPreferencesChanged, notifications, loading, error, onRead }) {
+function Alerts({ navigate, notifications, loading, error, onRead }) {
+  return <Screen withNav active={2} navigate={navigate}><View style={styles.greeting}><Text style={styles.eyebrow}>AL DÍA</Text><Text style={styles.pageTitle}>Avisos</Text><Text style={styles.subtitle}>Novedades relevantes según tus áreas jurídicas.</Text></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Últimos avisos</Text><Text style={styles.countText}>{notifications.filter((item) => !item.read).length} sin leer</Text></View>{loading && <Text style={styles.statusText}>Cargando avisos...</Text>}{error && <Text style={styles.errorText}>{error}</Text>}{!loading && !error && (notifications.length ? notifications.map((item) => <Pressable key={item.id} onPress={() => onRead(item)} style={[styles.notificationRow, !item.read && styles.notificationUnread]}><View style={styles.notificationDot} /><View style={styles.flex}><Text style={styles.notificationTitle} numberOfLines={2}>{item.title || 'Nueva publicación del BOE'}</Text><Text style={styles.metaText}>{formatDate(item.updatedAt || item.sentAt)}</Text></View><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>) : <EmptyState icon="notifications-off-outline" title="Sin avisos todavía" text="Aquí aparecerán las novedades que coincidan con tus preferencias." />)}</Screen>;
+}
+
+function NotificationPreferences({ navigate, token, preferences, onPreferencesChanged, onSwipeBack }) {
   const [enabled, setEnabled] = useState(true);
   useEffect(() => { if (typeof preferences?.pushNotifications === 'boolean') setEnabled(preferences.pushNotifications); }, [preferences]);
   const toggle = async (value) => {
@@ -243,12 +325,26 @@ function Alerts({ navigate, token, preferences, onPreferencesChanged, notificati
       onPreferencesChanged(next.preferences);
     } catch (error) { setEnabled(!value); Alert.alert('No se han actualizado los avisos', error.message); }
   };
-  return <Screen withNav active={2} navigate={navigate}><View style={styles.greeting}><Text style={styles.eyebrow}>AL DÍA</Text><Text style={styles.pageTitle}>Avisos</Text><Text style={styles.subtitle}>Novedades relevantes según tus áreas jurídicas.</Text></View><View style={styles.alertCard}><View style={styles.alertIcon}><Icon name="notifications" color={colors.white} /></View><View style={styles.flex}><Text style={styles.cardTitle}>Notificaciones push</Text><Text style={styles.cardSummary}>Recibe un aviso cuando se publique una novedad de tus áreas.</Text></View><Switch value={enabled} onValueChange={toggle} trackColor={{ false: colors.border, true: colors.gold }} /></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Últimos avisos</Text><Text style={styles.countText}>{notifications.filter((item) => !item.read).length} sin leer</Text></View>{loading && <Text style={styles.statusText}>Cargando avisos...</Text>}{error && <Text style={styles.errorText}>{error}</Text>}{!loading && !error && (notifications.length ? notifications.map((item) => <Pressable key={item.id} onPress={() => onRead(item)} style={[styles.notificationRow, !item.read && styles.notificationUnread]}><View style={styles.notificationDot} /><View style={styles.flex}><Text style={styles.notificationTitle} numberOfLines={2}>{item.title || 'Nueva publicación del BOE'}</Text><Text style={styles.metaText}>{formatDate(item.updatedAt || item.sentAt)}</Text></View><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>) : <EmptyState icon="notifications-off-outline" title="Sin avisos todavía" text="Aquí aparecerán las novedades que coincidan con tus preferencias." />)}</Screen>;
+  return <Screen onSwipeBack={onSwipeBack}><Header title="Preferencias de avisos" onBack={onSwipeBack} /><View style={styles.greeting}><Text style={styles.eyebrow}>CONFIGURACIÓN</Text><Text style={styles.pageTitle}>Preferencias de avisos</Text><Text style={styles.subtitle}>Controla cómo quieres recibir las novedades del BOE.</Text></View><View style={styles.alertCard}><View style={styles.alertIcon}><Icon name="notifications" color={colors.white} /></View><View style={styles.flex}><Text style={styles.cardTitle}>Notificaciones push</Text><Text style={styles.cardSummary}>Recibe un aviso cuando se publique una novedad de tus áreas.</Text></View><Switch value={enabled} onValueChange={toggle} trackColor={{ false: colors.border, true: colors.gold }} /></View></Screen>;
 }
 
-function Profile({ navigate, logout, user }) {
+function Profile({ navigate, logout, user, token, onUserUpdated }) {
+  const [supportVisible, setSupportVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [name, setName] = useState(user?.name || '');
+  useEffect(() => {
+    let active = true;
+    apiRequest('/profile', {}, token)
+      .then((payload) => {
+        if (active && payload.user) onUserUpdated(payload.user);
+      })
+      .catch((error) => console.warn('No se pudo actualizar el perfil', error.message));
+    return () => {
+      active = false;
+    };
+  }, [token]);
   const initials = (user?.name || user?.email || 'Usuario').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  return <Screen withNav active={3} navigate={navigate}><View style={styles.profile}><View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View><Text style={styles.profileName}>{user?.name || 'Usuario'}</Text><Text style={styles.subtitle}>{user?.email}</Text></View><View style={styles.settingsCard}><SettingRow icon="options-outline" label="Áreas jurídicas" onPress={() => navigate('filters')} /><SettingRow icon="notifications-outline" label="Preferencias de avisos" onPress={() => navigate('alerts')} /><SettingRow icon="help-circle-outline" label="Ayuda y soporte" onPress={() => Alert.alert('Ayuda', 'Escríbenos a soporte@colegioabogados.es')} /></View><Button variant="secondary" onPress={logout}>Cerrar sesión</Button></Screen>;
+  return <Screen withNav active={3} navigate={navigate}><View style={styles.profile}><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View></Pressable><Text style={styles.profileName}>{user?.name || 'Usuario'}</Text><Text style={styles.subtitle}>{user?.email}</Text><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><Text style={styles.editProfileLink}>Editar nombre</Text></Pressable></View><View style={styles.settingsCard}><SettingRow icon="options-outline" label="Áreas jurídicas" onPress={() => navigate('filters')} /><SettingRow icon="notifications-outline" label="Preferencias de avisos" onPress={() => navigate('notification-preferences')} /><SettingRow icon="help-circle-outline" label="Ayuda y soporte" onPress={() => setSupportVisible(true)} /></View><Button variant="secondary" onPress={logout}>Cerrar sesión</Button><Modal transparent visible={supportVisible} animationType="fade" onRequestClose={() => setSupportVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setSupportVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><View style={styles.supportIcon}><Icon name="help-circle-outline" size={27} color={colors.gold} /></View><Text style={styles.supportTitle}>Ayuda y soporte</Text><Text style={styles.supportText}>Escríbenos a soporte@colegioabogados.es</Text><Button onPress={() => setSupportVisible(false)}>Cerrar</Button></Pressable></Pressable></Modal><Modal transparent visible={editVisible} animationType="fade" onRequestClose={() => setEditVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setEditVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><Text style={styles.supportTitle}>Editar nombre</Text><TextInput value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="words" /><Button onPress={() => { const cleanName = name.trim(); if (!cleanName) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.'); if (cleanName.length > 100) return Alert.alert('Revisa tus datos', 'El nombre no puede superar los 100 caracteres.'); apiRequest('/profile', { method: 'PUT', body: JSON.stringify({ name: cleanName }) }, token).then((payload) => { onUserUpdated(payload.user); setEditVisible(false); }).catch((error) => Alert.alert('No se pudo actualizar el nombre', error.message)); }}>Guardar</Button><Button variant="secondary" onPress={() => setEditVisible(false)}>Cancelar</Button></Pressable></Pressable></Modal></Screen>;
 }
 
 function SettingRow({ icon, label, onPress }) { return <Pressable onPress={onPress} style={styles.settingRow}><Icon name={icon} color={colors.blue} /><Text style={styles.preferenceText}>{label}</Text><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>; }
@@ -256,24 +352,27 @@ function EmptyState({ text, title, icon = 'file-tray-outline' }) { return <View 
 
 function Auth({ onLogin }) {
   const [register, setRegister] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email)) return Alert.alert('Revisa tus datos', 'Introduce un correo electrónico válido.');
+    if (register && !name.trim()) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.');
     if (password.length < 6) return Alert.alert('Revisa tus datos', 'La contraseña debe tener al menos 6 caracteres.');
     setSubmitting(true);
     try {
-      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password, name: name.trim() }) });
       if (register) {
-        payload = await apiRequest('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        const loginPayload = await apiRequest('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        payload = { ...loginPayload, user: { ...loginPayload.user, name: payload.user?.name || name.trim() } };
       }
       onLogin(payload);
     } catch (error) {
       Alert.alert(register ? 'No se pudo crear la cuenta' : 'No se pudo iniciar sesión', error.message);
     } finally { setSubmitting(false); }
   };
-  return <SafeAreaView style={styles.auth}><StatusBar style="light" /><View style={styles.authOrbTop} /><View style={styles.authOrbBottom} /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authTitle}>Marco Legal</Text><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text><Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#A6B0B6" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 6 caracteres" placeholderTextColor="#A6B0B6" style={styles.input} /><Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><Pressable onPress={() => setRegister(!register)}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  return <SafeAreaView style={styles.auth}><StatusBar style="light" /><View style={styles.authOrbTop} /><View style={styles.authOrbBottom} /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authTitle}>Marco Legal</Text><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text>{register && <><Text style={styles.label}>Nombre</Text><TextInput autoCapitalize="words" value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor="#A6B0B6" style={styles.input} /></>}<Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#A6B0B6" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 6 caracteres" placeholderTextColor="#A6B0B6" style={styles.input} /><Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><Pressable onPress={() => setRegister(!register)}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Screen({ children, withNav = false, active, navigate, refreshing = false, onRefresh, onSwipeBack }) {
@@ -332,6 +431,7 @@ export default function App() {
   const goBack = () => {
     if (route === 'detail') return navigate('news');
     if (route === 'filters') return navigate('news');
+    if (route === 'notification-preferences') return navigate('profile');
     if (route === 'alerts' || route === 'history' || route === 'profile') return navigate('home');
     return navigate('home');
   };
@@ -346,7 +446,15 @@ export default function App() {
         apiRequest('/preferences', {}, payload.token),
       ]);
       setUpdatesFromApi(normalizeNews(newsPayload.news || []));
-      setPreferences(preferencesPayload.preferences);
+      const loadedPreferences = preferencesPayload.preferences || {};
+      setPreferences({
+        ...loadedPreferences,
+        emailNotifications: loadedPreferences.emailNotifications !== false,
+        pushNotifications: loadedPreferences.pushNotifications !== false,
+        categories: Array.isArray(loadedPreferences.categories)
+          ? loadedPreferences.categories.filter((category) => typeof category === 'string')
+          : [],
+      });
       loadActivity(payload.token);
       try {
         await registerPushToken(payload.token);
@@ -365,7 +473,7 @@ export default function App() {
         apiRequest('/notifications', {}, token),
         apiRequest('/history', {}, token),
       ]);
-      setNotifications(notificationsPayload.notifications || []);
+      setNotifications(normalizeNotifications(notificationsPayload.notifications || []));
       setHistory(historyPayload.history || []);
     } catch (requestError) {
       setActivityError(requestError.message);
@@ -410,8 +518,9 @@ export default function App() {
         : route === 'detail' ? (params || updatesFromApi[0] ? <Detail navigate={navigate} update={params || updatesFromApi[0]} onSwipeBack={goBack} onViewed={markViewed} /> : <EmptyState text="No hay una publicación seleccionada." />)
           : route === 'filters' ? <Filters navigate={navigate} token={session.token} preferences={preferences} onSwipeBack={goBack} />
             : route === 'history' ? <History navigate={navigate} history={history} updates={updatesFromApi} loading={activityLoading} error={activityError} />
-                : route === 'alerts' ? <Alerts navigate={navigate} token={session.token} preferences={preferences} onPreferencesChanged={setPreferences} notifications={notifications} loading={activityLoading} error={activityError} onRead={markNotificationRead} />
-                : <Profile navigate={navigate} user={session.user} logout={logout} />;
+                : route === 'alerts' ? <Alerts navigate={navigate} notifications={notifications} loading={activityLoading} error={activityError} onRead={markNotificationRead} />
+                  : route === 'notification-preferences' ? <NotificationPreferences navigate={navigate} token={session.token} preferences={preferences} onPreferencesChanged={setPreferences} onSwipeBack={goBack} />
+                : <Profile navigate={navigate} user={session.user} token={session.token} onUserUpdated={(user) => setSession((current) => ({ ...current, user }))} logout={logout} />;
   return <SafeAreaProvider>{content}</SafeAreaProvider>;
 }
 
@@ -434,10 +543,10 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }, categoryWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 }, categoryIconSmall: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.goldSoft, alignItems: 'center', justifyContent: 'center' }, category: { color: colors.gold, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: .5 }, newBadge: { color: colors.success, backgroundColor: '#EAF4EF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '800' },
   cardTitle: { color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '700' }, cardSummary: { color: colors.muted, lineHeight: 20, marginTop: 7 }, cardMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 13 }, metaText: { color: colors.muted, fontSize: 12 },
   button: { minHeight: 54, borderRadius: 14, backgroundColor: colors.navy, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18, marginTop: 22, shadowColor: colors.navy, shadowOpacity: .18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.navy, shadowOpacity: 0 }, buttonText: { backgroundColor: 'transparent', shadowOpacity: 0 }, buttonLabel: { color: colors.white, fontWeight: '800', fontSize: 15 }, buttonLabelSecondary: { color: colors.navy }, authButton: { backgroundColor: colors.gold, borderWidth: 1, borderColor: colors.white, shadowColor: '#000000', shadowOpacity: .2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 }, authButtonLabel: { color: colors.navy }, buttonDisabled: { opacity: .5 }, pressed: { opacity: .72 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 15, paddingHorizontal: 13, marginBottom: 13, shadowColor: '#15202B', shadowOpacity: .03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, searchInput: { flex: 1, padding: 13, color: colors.ink, fontSize: 15 }, chips: { gap: 8, paddingBottom: 18 }, chip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white }, chipSelected: { backgroundColor: colors.navy, borderColor: colors.navy }, chipText: { color: colors.muted, fontSize: 13, fontWeight: '700' }, chipTextSelected: { color: colors.white },
+  searchRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 13 }, searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 15, paddingHorizontal: 13, shadowColor: '#15202B', shadowOpacity: .03, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, searchInput: { flex: 1, padding: 13, color: colors.ink, fontSize: 15 }, sortControl: { position: 'relative', zIndex: 2, marginLeft: 8 }, sortButton: { minHeight: 48, paddingHorizontal: 10, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.goldSoft, borderWidth: 1, borderColor: '#EBDDBF' }, sortButtonLabel: { color: colors.navy, fontSize: 12, fontWeight: '800', marginHorizontal: 5 }, sortMenu: { position: 'absolute', top: 54, right: 0, width: 150, backgroundColor: colors.white, borderRadius: 13, borderWidth: 1, borderColor: colors.border, paddingVertical: 5, shadowColor: '#15202B', shadowOpacity: .14, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 }, sortOption: { minHeight: 40, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, sortOptionLabel: { color: colors.ink, fontSize: 13 }, sortOptionSelected: { color: colors.navy, fontWeight: '800' }, chips: { gap: 8, paddingBottom: 18 }, chip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white }, chipSelected: { backgroundColor: colors.navy, borderColor: colors.navy }, chipText: { color: colors.muted, fontSize: 13, fontWeight: '700' }, chipTextSelected: { color: colors.white },
   detail: { padding: 4, paddingBottom: 32 }, detailBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 }, detailIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.goldSoft, alignItems: 'center', justifyContent: 'center' }, detailTitle: { color: colors.navy, fontSize: 28, lineHeight: 35, fontWeight: '800', marginVertical: 12, letterSpacing: -.4 }, divider: { height: 1, backgroundColor: colors.border, marginVertical: 23 }, detailLead: { color: colors.ink, fontSize: 18, lineHeight: 28, fontWeight: '600' }, bodyText: { color: colors.muted, fontSize: 16, lineHeight: 25, marginTop: 18 },
   content: { paddingBottom: 30 }, sectionKicker: { color: colors.gold, fontSize: 11, letterSpacing: 1.2, fontWeight: '800', marginTop: 8 }, preferenceHeading: { color: colors.navy, fontSize: 25, fontWeight: '800', marginTop: 8, marginBottom: 4 }, preferenceList: { backgroundColor: colors.white, borderRadius: 16, overflow: 'hidden', marginTop: 20, borderWidth: 1, borderColor: colors.border }, preferenceRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.border, padding: 16 }, preferenceText: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: '600', marginLeft: 13 }, categoryIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: colors.goldSoft },
-  profile: { alignItems: 'center', marginVertical: 18 }, avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: colors.gold, fontSize: 27, fontWeight: '800' }, profileName: { color: colors.navy, fontSize: 22, fontWeight: '800', marginTop: 13 }, settingsCard: { backgroundColor: colors.white, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 14 }, settingRow: { flexDirection: 'row', alignItems: 'center', padding: 17, borderBottomWidth: 1, borderBottomColor: colors.border },
+  profile: { alignItems: 'center', marginVertical: 18 }, avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: colors.gold, fontSize: 27, fontWeight: '800' }, profileName: { color: colors.navy, fontSize: 22, fontWeight: '800', marginTop: 13 }, editProfileLink: { color: colors.blue, fontWeight: '700', marginTop: 8 }, settingsCard: { backgroundColor: colors.white, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 14 }, settingRow: { flexDirection: 'row', alignItems: 'center', padding: 17, borderBottomWidth: 1, borderBottomColor: colors.border }, supportOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(20, 42, 59, 0.55)' }, supportModal: { width: '100%', maxWidth: 380, borderRadius: 20, padding: 24, alignItems: 'center', backgroundColor: colors.white, shadowColor: '#15202B', shadowOpacity: .2, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 }, supportIcon: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.goldSoft, marginBottom: 12 }, supportTitle: { color: colors.navy, fontSize: 20, fontWeight: '800', marginBottom: 8 }, supportText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center' },
   alertCard: { backgroundColor: colors.white, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 30, borderWidth: 1, borderColor: colors.border }, alertIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, flex: { flex: 1 }, countText: { color: colors.blue, fontSize: 12, fontWeight: '700' }, notificationRow: { backgroundColor: colors.white, borderRadius: 14, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border }, notificationUnread: { borderColor: '#D5B16A', backgroundColor: '#FFFCF5' }, notificationDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.gold, marginRight: 12 }, notificationTitle: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: '700', marginBottom: 4 }, empty: { alignItems: 'center', justifyContent: 'center', padding: 45, gap: 10 }, emptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#EAF0F5', alignItems: 'center', justifyContent: 'center', marginBottom: 3 }, emptyTitle: { color: colors.navy, fontSize: 16, fontWeight: '800', textAlign: 'center' }, emptyText: { textAlign: 'center', color: colors.muted, lineHeight: 22 },
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 82, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 9, shadowColor: '#15202B', shadowOpacity: .08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 }, navItem: { alignItems: 'center', gap: 3, minWidth: 64, paddingHorizontal: 8 }, navItemActive: { }, navIcon: { width: 38, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: colors.navy }, navLabel: { color: colors.muted, fontSize: 11 }, navLabelActive: { color: colors.navy, fontWeight: '800' },
   auth: { flex: 1, backgroundColor: colors.navy, overflow: 'hidden' }, authKeyboard: { flex: 1 }, authInner: { flexGrow: 1, justifyContent: 'space-between', padding: 28, paddingTop: 70, paddingBottom: 28 }, authOrbTop: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: '#1C3A50', top: -120, right: -80 }, authOrbBottom: { position: 'absolute', width: 210, height: 210, borderRadius: 105, borderWidth: 1, borderColor: '#31556A', bottom: -95, left: -85 }, logoCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#1C3A50', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, authLogo: { width: 42, height: 42 }, logoMark: { color: colors.gold, fontSize: 58, fontWeight: '900' }, authTitle: { color: colors.white, fontSize: 37, fontWeight: '800', marginTop: 8 }, authSubtitle: { color: '#B9C4CB', fontSize: 16, lineHeight: 24, marginTop: 9 }, authForm: { paddingBottom: 20 }, formIntro: { color: colors.white, fontSize: 21, fontWeight: '700', marginBottom: 8 }, label: { color: '#DDE4E8', fontWeight: '700', fontSize: 13, marginBottom: 7, marginTop: 14 }, input: { backgroundColor: colors.white, borderRadius: 13, padding: 15, fontSize: 16, color: colors.ink }, authLink: { color: colors.gold, textAlign: 'center', marginTop: 20, fontWeight: '700' },

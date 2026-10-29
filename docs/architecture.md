@@ -3,7 +3,7 @@
 La aplicación usa Firebase como plataforma única de datos y autenticación:
 
 ```text
-Flutter -> API Express -> Firebase Authentication
+Expo/React Native -> API Express -> Firebase Authentication
                     -> Cloud Firestore
                     -> Firebase Cloud Messaging
 ```
@@ -16,7 +16,7 @@ Flutter -> API Express -> Firebase Authentication
 - **Cloud Messaging:** notificaciones push.
 - **Firebase Admin SDK:** acceso seguro del backend a los servicios anteriores.
 
-No se usa PostgreSQL, JWT propio, bcrypt ni una conexión directa desde Flutter a
+No se usa PostgreSQL, JWT propio, bcrypt ni una conexión directa desde Expo a
 la base de datos.
 
 ## API
@@ -48,3 +48,12 @@ Firebase Console. La clave privada nunca debe subirse al repositorio.
 Para desarrollar con Firestore Security Rules, publicar también reglas que
 limiten cada documento por `request.auth.uid`. El backend usa Admin SDK y por
 eso sus lecturas no están limitadas por esas reglas.
+
+## Desarrollo local y túneles
+
+Docker publica el backend en `http://localhost:3006` y el frontend web en
+`http://localhost:3000`. Para probar la aplicación móvil desde un teléfono
+físico, se expone el backend con `cloudflared tunnel --url
+http://localhost:3006` y se configura la URL resultante en
+`frontend/.env` como `EXPO_PUBLIC_API_URL`. Expo se inicia con `npx expo start
+--tunnel` para exponer Metro.

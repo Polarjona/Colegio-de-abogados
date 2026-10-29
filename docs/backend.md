@@ -74,7 +74,7 @@ facturación que incluya Cloud Scheduler:
 
 ```shell
 cd functions
-npm install
+npm ci
 cd ..
 firebase deploy --only functions:importBoeHourly
 ```
@@ -131,7 +131,7 @@ Las rutas protegidas requieren `Authorization: Bearer <Firebase ID token>`.
 
 ```text
 cd backend
-npm install
+npm ci
 npm start
 ```
 
@@ -141,6 +141,7 @@ O desde la raíz:
 docker compose up --build
 ```
 
-Para Flutter, ejecutar `flutterfire configure` y habilitar Email/Password en
-Firebase Authentication. Esto generará la configuración nativa necesaria para
-Android/iOS; no se deben inventar ni compartir esos archivos con secretos.
+La aplicación cliente usa Expo/React Native. Para probarla desde un teléfono
+físico, consulta la sección de túneles del
+[README principal](../README.md): el backend se expone con Cloudflare Tunnel y
+Expo se inicia con `npx expo start --tunnel`.

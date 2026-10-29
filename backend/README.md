@@ -7,7 +7,7 @@
   Cloud Messaging habilitados.
 
 Docker Compose carga automáticamente `backend/.env`. Si no hay credenciales
-Firebase completas, arranca por defecto en modo demo (`DEMO_MODE=true`) para
+Firebase completas, el backend arranca en modo demo para
 poder probar la aplicación localmente. Este modo
 expone noticias y autenticación de prueba en memoria; no debe usarse en
 producción.
@@ -16,7 +16,7 @@ producción.
 
 ```text
 cp .env.example .env
-npm install
+npm ci
 npm start
 ```
 
@@ -28,8 +28,8 @@ defecto. Consulta
 ## Endpoints de prueba
 
 - `GET /` devuelve `Marco Legal API funcionando`.
-- `GET /health` comprueba la conexión con PostgreSQL y devuelve el estado del
+- `GET /health` comprueba la conexión con Firebase y devuelve el estado del
   backend.
 
-El backend también se puede iniciar junto con PostgreSQL desde la raíz con
+El backend también se puede iniciar junto con el frontend desde la raíz con
 `docker compose up --build`.

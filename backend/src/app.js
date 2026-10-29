@@ -143,6 +143,73 @@ app.get('/news', async (req, res, next) => {
   }
 });
 
+app.get('/notifications', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) return res.json({ notifications: [] });
+  try {
+    const snapshot = await getFirebase().db.collection('notifications')
+      .where('userId', '==', req.user.uid).limit(100).get();
+    const notifications = await Promise.all(snapshot.docs.map(async (doc) => {
+      const data = doc.data();
+      const newsSnapshot = await getFirebase().db.collection('news').doc(data.newsId).get();
+      const news = newsSnapshot.exists ? newsSnapshot.data() : {};
+      return {
+        id: doc.id,
+        ...data,
+        title: news.title || 'Nueva publicación del BOE',
+        summary: news.summary || news.description || '',
+        category: news.category || 'General'
+      };
+    }));
+    notifications.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    res.json({ notifications });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/notifications/:notificationId/read', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) return res.json({ notification: { id: req.params.notificationId, read: true } });
+  try {
+    const ref = getFirebase().db.collection('notifications').doc(req.params.notificationId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists || snapshot.data().userId !== req.user.uid) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    await ref.set({ read: true, readAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, { merge: true });
+    res.json({ notification: { id: ref.id, ...snapshot.data(), read: true } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/history', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) return res.json({ history: [] });
+  try {
+    const snapshot = await getFirebase().db.collection('history')
+      .where('userId', '==', req.user.uid).limit(100).get();
+    const history = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => String(b.viewedAt || '').localeCompare(String(a.viewedAt || '')));
+    res.json({ history });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/history/:newsId', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) return res.json({ history: { newsId: req.params.newsId, userId: req.user.uid } });
+  try {
+    const entry = {
+      newsId: req.params.newsId,
+      userId: req.user.uid,
+      viewedAt: new Date().toISOString()
+    };
+    await getFirebase().db.collection('history').doc(`${req.user.uid}_${req.params.newsId}`).set(entry, { merge: true });
+    res.json({ history: entry });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/preferences', requireAuth, async (req, res, next) => {
   if (getConfig().demo) {
     return res.json({

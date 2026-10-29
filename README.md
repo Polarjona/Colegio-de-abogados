@@ -1,32 +1,54 @@
 # Colegio de Abogados
 
-Aplicacion movil para recibir notificaciones sobre novedades legislativas
+Aplicación móvil para recibir notificaciones sobre novedades legislativas
 publicadas en el BOE.
 
 ## Estructura
 
 - `frontend/`: aplicacion React Native con Expo (Android, iOS y web).
 - `backend/`: API REST con Node.js y Express.
-- `database/`: esquema y datos iniciales de Firebase.
 - `functions/`: importación horaria del BOE y envío de notificaciones.
 - `docs/`: documentacion tecnica y requisitos.
 
-## Ejecutar con Docker
+## Ejecución local recomendada
 
-Requisitos: Docker y Docker Compose.
+### Requisitos
 
-Desde la raiz del repositorio:
+- Docker y Docker Compose.
+- Node.js 20 o superior.
+- `cloudflared` si se va a probar desde un móvil físico.
+
+### Backend y frontend web con Docker
+
+Desde la raíz del repositorio:
 
 ```shell
 docker compose up --build
 ```
 
-Esto inicia PostgreSQL, el backend y el frontend. Los servicios quedan
-disponibles en:
+Esto inicia el backend y el frontend web. Los servicios quedan disponibles en:
 
-- Frontend: <http://localhost:3000>
+- Frontend web: <http://localhost:3000>
 - Backend: <http://localhost:3006>
 
+Comprueba el backend con:
+
+```shell
+curl http://localhost:3006/health
+```
+
+Docker Compose carga automáticamente `backend/.env`. Para usar Firebase real,
+completa ese archivo con las variables de [`backend/.env.example`](backend/.env.example).
+Si faltan credenciales, el backend puede arrancar en modo demo.
+
+
+Si el puerto `3006` está ocupado:
+
+```shell
+BACKEND_PORT=3007 docker compose up --build
+```
+
+En ese caso, cambia también la URL del frontend a `http://localhost:3007`.
 
 Para detener los contenedores:
 
@@ -34,27 +56,53 @@ Para detener los contenedores:
 docker compose down
 ```
 
-Para detenerlos y borrar los datos persistidos de PostgreSQL:
+Para detenerlos y eliminar los datos persistidos de los contenedores:
 
 ```shell
 docker compose down -v
 ```
 
-El backend necesita `DATABASE_URL` y `JWT_SECRET`. En Docker Compose se
-configuran automaticamente; para ejecutarlo fuera de Docker, copia
-[`backend/.env.example`](backend/.env.example) a `backend/.env` y ajusta sus
-valores.
+### Probar desde un móvil con túneles
 
-Por defecto, Docker Compose usa el modo demo de Firebase para poder arrancar
-sin credenciales externas. Para usar Firebase real, configura las variables
-del archivo `.env` y establece `DEMO_MODE=false`. Si el puerto elegido está
-ocupado, usa `BACKEND_PORT=3007 docker compose up --build`.
+Usa tres terminales y mantén las tres abiertas.
+
+**Terminal 1 — backend y frontend:**
+
+```shell
+cd /home/b_pol_arjona/Colegio-de-abogados
+docker compose up --build
+```
+
+**Terminal 2 — túnel del backend:**
+
+```shell
+cloudflared tunnel --url http://localhost:3006
+```
+
+Copia la URL `https://...trycloudflare.com` que muestre Cloudflare.
+
+**Terminal 3 — configurar y arrancar Expo:**
+
+```shell
+cd /home/b_pol_arjona/Colegio-de-abogados/frontend
+printf 'EXPO_PUBLIC_API_URL=https://TU-URL.trycloudflare.com\n' > .env
+npm ci
+npx expo start --tunnel
+```
+
+Sustituye `TU-URL.trycloudflare.com` por la URL real del túnel. La URL cambia
+cuando se crea un túnel nuevo. Después, escanea el código QR con Expo Go o usa
+`a` para Android, `i` para iOS y `w` para web.
+
+El túnel de Cloudflare expone la API; el parámetro `--tunnel` de Expo expone
+Metro para que el móvil pueda cargar la aplicación. No cierres ninguna de las
+terminales mientras estés probando.
 
 ## Ejecutar el backend sin Docker
 
 ```shell
 cd backend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -68,7 +116,7 @@ estado y `GET /health` comprueba la conexion con Firebase.
 - DevOps: Pol
 - Base de datos: Yazan
 
-## Tecnologias
+## Tecnologías
 
 - React Native y Expo
 - Node.js y Express

@@ -1,4 +1,4 @@
-# Marco Legal — React Native
+# ICAT Tarragona — React Native
 
 Aplicación móvil multiplataforma construida con React Native y Expo. Incluye
 acceso y registro mediante la API, inicio, novedades, detalle, filtros,

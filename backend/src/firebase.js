@@ -51,8 +51,81 @@ async function signInWithPassword(email, password) {
   return payload;
 }
 
+async function refreshIdToken(refreshToken) {
+  const { firebase } = getConfig();
+  if (!firebase.webApiKey) {
+    throw new Error('Firebase Web API key is not configured');
+  }
+  const response = await fetch(
+    `https://securetoken.googleapis.com/v1/token?key=${firebase.webApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+    }
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || 'Firebase token refresh failed');
+    error.code = payload.error?.message;
+    throw error;
+  }
+  return payload;
+}
+
+async function requestPasswordReset(email) {
+  const { firebase } = getConfig();
+  if (!firebase.webApiKey) {
+    throw new Error('Firebase Web API key is not configured');
+  }
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${firebase.webApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'PASSWORD_RESET', email })
+    }
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || 'Firebase password reset failed');
+    error.code = payload.error?.message;
+    throw error;
+  }
+  return payload;
+}
+
+async function confirmPasswordReset(oobCode, newPassword) {
+  const { firebase } = getConfig();
+  if (!firebase.webApiKey) {
+    throw new Error('Firebase Web API key is not configured');
+  }
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${firebase.webApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oobCode, newPassword })
+    }
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || 'Firebase password reset failed');
+    error.code = payload.error?.message;
+    throw error;
+  }
+  return payload;
+}
+
 async function sendToDevices(tokens, notification) {
   return getFirebase().messaging.sendEachForMulticast({ tokens, notification });
 }
 
-module.exports = { getFirebase, sendToDevices, signInWithPassword };
+module.exports = {
+  getFirebase,
+  sendToDevices,
+  signInWithPassword,
+  refreshIdToken,
+  requestPasswordReset,
+  confirmPasswordReset
+};

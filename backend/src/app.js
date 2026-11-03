@@ -1,6 +1,13 @@
 const express = require('express');
 const cors = require('cors');
-const { getFirebase, sendToDevices, signInWithPassword } = require('./firebase');
+const {
+  getFirebase,
+  sendToDevices,
+  signInWithPassword,
+  refreshIdToken,
+  requestPasswordReset,
+  confirmPasswordReset
+} = require('./firebase');
 const { requireAuth } = require('./auth');
 const { getConfig } = require('./config');
 
@@ -56,11 +63,30 @@ app.get('/health', async (req, res, next) => {
 });
 
 app.post('/register', async (req, res, next) => {
-  const { email, password, name } = req.body || {};
-  if (!isNonEmptyString(email) || !isNonEmptyString(password) || password.length < 6) {
+  const {
+    email,
+    password,
+    name,
+    barNumber,
+    barAssociation,
+    specialties,
+    termsAccepted,
+    privacyAccepted
+  } = req.body || {};
+  if (!isNonEmptyString(email) || !isNonEmptyString(password) || password.length < 8) {
     return res.status(400).json({
-      error: 'email and password are required; password must contain at least 6 characters'
+      error: 'email and password are required; password must contain at least 8 characters'
     });
+  }
+  if (termsAccepted !== true || privacyAccepted !== true) {
+    return res.status(400).json({ error: 'Terms and privacy policy acceptance is required' });
+  }
+  if ((barNumber != null && (!isNonEmptyString(barNumber) || barNumber.trim().length > 50))
+    || (barAssociation != null && (!isNonEmptyString(barAssociation) || barAssociation.trim().length > 100))
+    || (specialties != null && (!Array.isArray(specialties)
+      || specialties.length > 10
+      || specialties.some((specialty) => !isNonEmptyString(specialty) || specialty.trim().length > 60)))) {
+    return res.status(400).json({ error: 'Invalid professional profile data' });
   }
 
   if (getConfig().demo) {
@@ -77,17 +103,69 @@ app.post('/register', async (req, res, next) => {
       password,
       displayName: isNonEmptyString(name) ? name.trim() : undefined
     });
-    await db.collection('users').doc(user.uid).set(userData(user, name));
+    await db.collection('users').doc(user.uid).set({
+      ...userData(user, name),
+      ...(isNonEmptyString(barNumber) ? { barNumber: barNumber.trim() } : {}),
+      ...(isNonEmptyString(barAssociation) ? { barAssociation: barAssociation.trim() } : {}),
+      ...(Array.isArray(specialties) ? { specialties: specialties.map((specialty) => specialty.trim()) } : {})
+    });
+    const consent = {
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsAcceptedAt: new Date().toISOString(),
+      privacyAcceptedAt: new Date().toISOString(),
+      legalVersion: '2026-01'
+    };
+    await db.collection('consents').doc(user.uid).set(consent);
     await db.collection('preferences').doc(user.uid).set({
       emailNotifications: true,
       pushNotifications: true,
       categories: [],
       updatedAt: new Date().toISOString()
     });
+
     res.status(201).json({ user: userData(user, name) });
   } catch (error) {
     if (error.code === 'auth/email-already-exists') {
       return res.status(409).json({ error: 'An account with that email already exists' });
+    }
+    next(error);
+  }
+});
+
+app.post('/password-reset/request', async (req, res, next) => {
+  const { email } = req.body || {};
+  if (!isNonEmptyString(email) || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (getConfig().demo) {
+    return res.json({ message: 'If an account exists, reset instructions have been sent.' });
+  }
+  try {
+    await requestPasswordReset(email.trim().toLowerCase());
+    res.json({ message: 'If an account exists, reset instructions have been sent.' });
+  } catch (error) {
+    if (['EMAIL_NOT_FOUND', 'INVALID_EMAIL'].includes(error.code)) {
+      return res.json({ message: 'If an account exists, reset instructions have been sent.' });
+    }
+    next(error);
+  }
+});
+
+app.post('/password-reset/confirm', async (req, res, next) => {
+  const { oobCode, newPassword } = req.body || {};
+  if (!isNonEmptyString(oobCode) || !isNonEmptyString(newPassword) || newPassword.length < 8) {
+    return res.status(400).json({ error: 'A reset token and a password of at least 8 characters are required' });
+  }
+  if (getConfig().demo) {
+    return res.json({ message: 'Password updated successfully' });
+  }
+  try {
+    await confirmPasswordReset(oobCode.trim(), newPassword);
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    if (['EXPIRED_OOB_CODE', 'INVALID_OOB_CODE', 'WEAK_PASSWORD'].includes(error.code)) {
+      return res.status(400).json({ error: 'The reset link is invalid, expired, or the password is too weak' });
     }
     next(error);
   }
@@ -127,6 +205,25 @@ app.post('/login', async (req, res, next) => {
   }
 });
 
+app.post('/auth/refresh', async (req, res, next) => {
+  const { refreshToken } = req.body || {};
+  if (!isNonEmptyString(refreshToken)) {
+    return res.status(400).json({ error: 'refreshToken is required' });
+  }
+  if (getConfig().demo) {
+    return res.json({ token: 'demo-token', refreshToken: 'demo-refresh-token' });
+  }
+  try {
+    const credentials = await refreshIdToken(refreshToken.trim());
+    res.json({
+      token: credentials.id_token,
+      refreshToken: credentials.refresh_token || refreshToken.trim()
+    });
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired Firebase refresh token' });
+  }
+});
+
 app.put('/profile', requireAuth, async (req, res, next) => {
   const { name } = req.body || {};
   if (!isNonEmptyString(name) || name.trim().length > 100) {
@@ -141,6 +238,32 @@ app.put('/profile', requireAuth, async (req, res, next) => {
     const user = await auth.updateUser(req.user.uid, { displayName: cleanName });
     await db.collection('users').doc(user.uid).set({ name: cleanName }, { merge: true });
     res.json({ user: userData(user, cleanName) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/account', requireAuth, async (req, res, next) => {
+  if (getConfig().demo) {
+    return res.json({ deleted: true });
+  }
+  try {
+    const { auth, db } = getFirebase();
+    const collections = ['users', 'preferences', 'consents', 'history', 'notifications', 'deviceTokens'];
+    for (const collectionName of collections) {
+      const snapshot = await db.collection(collectionName).where('userId', '==', req.user.uid).get();
+      const references = snapshot.docs.map((doc) => doc.ref);
+      if (collectionName === 'users' || collectionName === 'preferences' || collectionName === 'consents') {
+        references.push(db.collection(collectionName).doc(req.user.uid));
+      }
+      for (let offset = 0; offset < references.length; offset += 400) {
+        const batch = db.batch();
+        references.slice(offset, offset + 400).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+    }
+    await auth.deleteUser(req.user.uid);
+    res.json({ deleted: true });
   } catch (error) {
     next(error);
   }

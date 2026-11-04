@@ -120,6 +120,13 @@ Las rutas protegidas requieren `Authorization: Bearer <Firebase ID token>`.
 - `GET /health`: comprueba el acceso a Firestore.
 - `POST /register`: crea un usuario Firebase y sus preferencias iniciales.
 - `POST /login`: inicia sesión mediante Firebase Identity Toolkit.
+- `POST /password-reset/request`: envía instrucciones de restablecimiento sin
+  revelar si el correo está registrado.
+- `POST /password-reset/confirm`: valida el código temporal de Firebase y
+  actualiza la contraseña.
+- `DELETE /account`: elimina la cuenta autenticada y sus datos asociados
+  (perfil, preferencias, consentimientos, historial, avisos y dispositivos).
+- `PATCH /notifications/:notificationId/read`: marca un aviso como leído.
 - `GET /news`: lista noticias publicadas.
 - `GET /preferences` y `PUT /preferences`: gestiona preferencias.
 - `POST /devices/token` y `DELETE /devices/token`: registra y desactiva

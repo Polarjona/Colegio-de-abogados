@@ -58,10 +58,22 @@ Cloudflare cambia al crear un túnel nuevo.
   icono de controles para abrir las áreas jurídicas.
 - La barra inferior abre Inicio, Historial, Avisos y Perfil.
 - Desde Perfil puedes entrar a preferencias y áreas jurídicas, o cerrar sesión.
+- Desde Perfil puedes consultar el Aviso Legal y la Política de Privacidad, o
+  solicitar la eliminación definitiva de la cuenta y sus datos.
+- El registro exige aceptar de forma expresa y no premarcada ambos documentos
+  legales. También permite indicar, de forma opcional, número de colegiado,
+  colegio o territorio y materias jurídicas de interés. El acceso incluye
+  recuperación mediante correo y código temporal.
 - Para probar el registro, vuelve a Bienvenida y pulsa **Registrarme**.
 
 El acceso y el registro validan campos localmente y entran con cualquier dato
 válido: son interacciones de prototipo, no cuentas reales.
+
+La identidad legal mostrada en la aplicación se configura mediante
+`EXPO_PUBLIC_LEGAL_ENTITY`, `EXPO_PUBLIC_LEGAL_NIF`,
+`EXPO_PUBLIC_LEGAL_ADDRESS`, `EXPO_PUBLIC_LEGAL_EMAIL` y
+`EXPO_PUBLIC_LEGAL_VERSION`. Deben completarse con los datos verificados de la
+entidad antes de publicar la aplicación.
 
 ## Estructura
 

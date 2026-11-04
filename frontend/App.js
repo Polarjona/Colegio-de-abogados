@@ -61,12 +61,20 @@ const updates = [
   { title: 'Revisión de disposiciones del Código Penal', category: 'Penal', date: '15 oct 2026', summary: 'Publicación de cambios y disposiciones complementarias en materia penal.', reference: 'BOE-A-2026-09133' },
 ];
 const categories = ['Civil', 'Penal', 'Laboral', 'Mercantil', 'Administrativo', 'Fiscal'];
+const registrationSpecialties = ['Civil', 'Penal', 'Laboral', 'Mercantil', 'Administrativo', 'Fiscal'];
 const sortModes = [
   { value: 'newest', label: 'Más nuevas' },
   { value: 'oldest', label: 'Más antiguas' },
   { value: 'alphabetical', label: 'A-Z' },
 ];
 const API_URL = process.env.EXPO_PUBLIC_API_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:3006' : 'http://localhost:3006');
+const LEGAL = {
+  entity: process.env.EXPO_PUBLIC_LEGAL_ENTITY || 'Il·lustre Col·legi de l’Advocacia de Tarragona',
+  nif: process.env.EXPO_PUBLIC_LEGAL_NIF || 'NIF pendiente de configuración',
+  address: process.env.EXPO_PUBLIC_LEGAL_ADDRESS || 'Tarragona, España',
+  email: process.env.EXPO_PUBLIC_LEGAL_EMAIL || 'soporte@colegioabogados.es',
+  version: process.env.EXPO_PUBLIC_LEGAL_VERSION || '2026-01',
+};
 
 async function registerPushToken(token) {
   if (Platform.OS === 'web' || !Notifications) return;
@@ -102,7 +110,11 @@ async function apiRequest(path, options = {}, token) {
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `La API respondió con ${response.status}.`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `La API respondió con ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -248,7 +260,7 @@ function Home({ navigate, updates, loading, error, onRefresh }) {
     && item.title.toLowerCase().includes(query.toLowerCase())
   )), sortMode);
   return <Screen withNav active={0} navigate={navigate} refreshing={loading} onRefresh={onRefresh}>
-    <View style={styles.homeHero}><View style={styles.greeting}><Text style={styles.eyebrow}>IL·LUSTRE COL·LEGI DE L’ADVOCACIA</Text><Text style={styles.pageTitle}>Novedades para ti</Text><Text style={styles.subtitle}>La actualidad jurídica, siempre al día.</Text></View><View style={styles.heroSeal}><Image source={APP_LOGO} style={styles.heroLogo} resizeMode="contain" /></View></View>
+    <View style={styles.homeHero}><View style={styles.greeting}><View style={styles.homeBrand}><View style={styles.heroSeal}><Image source={APP_LOGO} style={styles.heroLogo} resizeMode="contain" /></View><Text style={styles.eyebrow}>IL·LUSTRE{'\n'}COL·LEGI DE L’ADVOCACIA</Text></View><Text style={styles.pageTitle}>Novedades para ti</Text><Text style={styles.subtitle}>La actualidad jurídica, siempre al día.</Text></View></View>
     <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Publicaciones</Text><Text style={styles.countText}>{filtered.length} resultados</Text></View>
     <View style={styles.searchRow}><View style={styles.searchBox}><Icon name="search-outline" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="Buscar publicaciones" placeholderTextColor={colors.muted} style={styles.searchInput} /></View><SortControl mode={sortMode} onSelect={setSortMode} /></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{['Todas', ...categories].map((category) => <Pressable key={category} onPress={() => setSelected(category)} style={[styles.chip, selected === category && styles.chipSelected]}><Text style={[styles.chipText, selected === category && styles.chipTextSelected]}>{category}</Text></Pressable>)}</ScrollView>
@@ -312,7 +324,7 @@ function History({ navigate, history, updates, loading, error }) {
 }
 
 function Alerts({ navigate, notifications, loading, error, onRead }) {
-  return <Screen withNav active={2} navigate={navigate}><View style={styles.greeting}><Text style={styles.eyebrow}>AL DÍA</Text><Text style={styles.pageTitle}>Avisos</Text><Text style={styles.subtitle}>Novedades relevantes según tus áreas jurídicas.</Text></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Últimos avisos</Text><Text style={styles.countText}>{notifications.filter((item) => !item.read).length} sin leer</Text></View>{loading && <Text style={styles.statusText}>Cargando avisos...</Text>}{error && <Text style={styles.errorText}>{error}</Text>}{!loading && !error && (notifications.length ? notifications.map((item) => <Pressable key={item.id} onPress={() => onRead(item)} style={[styles.notificationRow, !item.read && styles.notificationUnread]}><View style={styles.notificationDot} /><View style={styles.flex}><Text style={styles.notificationTitle} numberOfLines={2}>{item.title || 'Nueva publicación del BOE'}</Text><Text style={styles.metaText}>{formatDate(item.updatedAt || item.sentAt)}</Text></View><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>) : <EmptyState icon="notifications-off-outline" title="Sin avisos todavía" text="Aquí aparecerán las novedades que coincidan con tus preferencias." />)}</Screen>;
+  return <Screen withNav active={2} navigate={navigate}><View style={styles.greeting}><Text style={styles.eyebrow}>AL DÍA</Text><Text style={styles.pageTitle}>Avisos</Text><Text style={styles.subtitle}>Novedades relevantes según tus áreas jurídicas.</Text></View><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Últimos avisos</Text><Text style={styles.countText}>{notifications.filter((item) => !item.read).length} sin leer</Text></View>{loading && <Text style={styles.statusText}>Cargando avisos...</Text>}{error && <Text style={styles.errorText}>{error}</Text>}{!loading && !error && (notifications.length ? notifications.map((item) => <Pressable key={item.id} onPress={() => onRead(item)} accessibilityRole="button" style={[styles.notificationRow, !item.read && styles.notificationUnread, item.read && styles.notificationRead]}><View style={[styles.notificationDot, item.read && styles.notificationDotRead]} /><View style={styles.flex}><Text style={[styles.notificationTitle, item.read && styles.notificationTitleRead]} numberOfLines={2}>{item.title || 'Nueva publicación del BOE'}</Text><Text style={styles.metaText}>{formatDate(item.updatedAt || item.sentAt)}</Text></View><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>) : <EmptyState icon="notifications-off-outline" title="Sin avisos todavía" text="Aquí aparecerán las novedades que coincidan con tus preferencias." />)}</Screen>;
 }
 
 function NotificationPreferences({ navigate, token, preferences, onPreferencesChanged, onSwipeBack }) {
@@ -328,10 +340,11 @@ function NotificationPreferences({ navigate, token, preferences, onPreferencesCh
   return <Screen onSwipeBack={onSwipeBack}><Header title="Preferencias de avisos" onBack={onSwipeBack} /><View style={styles.greeting}><Text style={styles.eyebrow}>CONFIGURACIÓN</Text><Text style={styles.pageTitle}>Preferencias de avisos</Text><Text style={styles.subtitle}>Controla cómo quieres recibir las novedades del BOE.</Text></View><View style={styles.alertCard}><View style={styles.alertIcon}><Icon name="notifications" color={colors.white} /></View><View style={styles.flex}><Text style={styles.cardTitle}>Notificaciones push</Text><Text style={styles.cardSummary}>Recibe un aviso cuando se publique una novedad de tus áreas.</Text></View><Switch value={enabled} onValueChange={toggle} trackColor={{ false: colors.border, true: colors.gold }} /></View></Screen>;
 }
 
-function Profile({ navigate, logout, user, token, onUserUpdated }) {
+function Profile({ navigate, logout, user, token, refreshToken, onTokenRefreshed, onUserUpdated, onAccountDeleted }) {
   const [supportVisible, setSupportVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [name, setName] = useState(user?.name || '');
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     let active = true;
     apiRequest('/profile', {}, token)
@@ -344,25 +357,105 @@ function Profile({ navigate, logout, user, token, onUserUpdated }) {
     };
   }, [token]);
   const initials = (user?.name || user?.email || 'Usuario').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  return <Screen withNav active={3} navigate={navigate}><View style={styles.profile}><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View></Pressable><Text style={styles.profileName}>{user?.name || 'Usuario'}</Text><Text style={styles.subtitle}>{user?.email}</Text><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><Text style={styles.editProfileLink}>Editar nombre</Text></Pressable></View><View style={styles.settingsCard}><SettingRow icon="options-outline" label="Áreas jurídicas" onPress={() => navigate('filters')} /><SettingRow icon="notifications-outline" label="Preferencias de avisos" onPress={() => navigate('notification-preferences')} /><SettingRow icon="help-circle-outline" label="Ayuda y soporte" onPress={() => setSupportVisible(true)} /></View><Button variant="secondary" onPress={logout}>Cerrar sesión</Button><Modal transparent visible={supportVisible} animationType="fade" onRequestClose={() => setSupportVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setSupportVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><View style={styles.supportIcon}><Icon name="help-circle-outline" size={27} color={colors.gold} /></View><Text style={styles.supportTitle}>Ayuda y soporte</Text><Text style={styles.supportText}>Escríbenos a soporte@colegioabogados.es</Text><Button onPress={() => setSupportVisible(false)}>Cerrar</Button></Pressable></Pressable></Modal><Modal transparent visible={editVisible} animationType="fade" onRequestClose={() => setEditVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setEditVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><Text style={styles.supportTitle}>Editar nombre</Text><TextInput value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="words" /><Button onPress={() => { const cleanName = name.trim(); if (!cleanName) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.'); if (cleanName.length > 100) return Alert.alert('Revisa tus datos', 'El nombre no puede superar los 100 caracteres.'); apiRequest('/profile', { method: 'PUT', body: JSON.stringify({ name: cleanName }) }, token).then((payload) => { onUserUpdated(payload.user); setEditVisible(false); }).catch((error) => Alert.alert('No se pudo actualizar el nombre', error.message)); }}>Guardar</Button><Button variant="secondary" onPress={() => setEditVisible(false)}>Cancelar</Button></Pressable></Pressable></Modal></Screen>;
+  const deleteAccount = () => Alert.alert('Eliminar cuenta y datos', 'Esta acción es permanente y borrará tu perfil, preferencias, avisos e historial.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar definitivamente', style: 'destructive', onPress: async () => { setDeleting(true); try { await apiRequest('/account', { method: 'DELETE' }, token); onAccountDeleted(); } catch (error) { Alert.alert('No se pudo eliminar la cuenta', error.message); } finally { setDeleting(false); } } }]);
+  const updateName = async () => {
+    const cleanName = name.trim();
+    if (!cleanName) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.');
+    if (cleanName.length > 100) return Alert.alert('Revisa tus datos', 'El nombre no puede superar los 100 caracteres.');
+    try {
+      let payload;
+      try {
+        payload = await apiRequest('/profile', { method: 'PUT', body: JSON.stringify({ name: cleanName }) }, token);
+      } catch (error) {
+        if (error.status !== 401 || !refreshToken) throw error;
+        const refreshed = await apiRequest('/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken })
+        });
+        onTokenRefreshed(refreshed);
+        payload = await apiRequest('/profile', { method: 'PUT', body: JSON.stringify({ name: cleanName }) }, refreshed.token);
+      }
+      onUserUpdated(payload.user);
+      setEditVisible(false);
+    } catch (error) {
+      Alert.alert('No se pudo actualizar el nombre', error.message);
+    }
+  };
+  return <Screen withNav active={3} navigate={navigate}><View style={styles.profile}><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View></Pressable><Text style={styles.profileName}>{user?.name || 'Usuario'}</Text><Text style={styles.subtitle}>{user?.email}</Text><Pressable onPress={() => { setName(user?.name || ''); setEditVisible(true); }}><Text style={styles.editProfileLink}>Editar nombre</Text></Pressable></View><View style={styles.settingsCard}><SettingRow icon="options-outline" label="Áreas jurídicas" onPress={() => navigate('filters')} /><SettingRow icon="notifications-outline" label="Preferencias de avisos" onPress={() => navigate('notification-preferences')} /><SettingRow icon="document-text-outline" label="Aviso Legal y Condiciones" onPress={() => navigate('legal', { document: 'terms' })} /><SettingRow icon="shield-checkmark-outline" label="Política de Privacidad" onPress={() => navigate('legal', { document: 'privacy' })} /><SettingRow icon="help-circle-outline" label="Ayuda y soporte" onPress={() => setSupportVisible(true)} /></View><Button variant="secondary" disabled={deleting} onPress={deleteAccount}>{deleting ? 'Eliminando...' : 'Eliminar cuenta y datos'}</Button><Button variant="secondary" onPress={logout}>Cerrar sesión</Button><Modal transparent visible={supportVisible} animationType="fade" onRequestClose={() => setSupportVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setSupportVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><View style={styles.supportIcon}><Icon name="help-circle-outline" size={27} color={colors.gold} /></View><Text style={styles.supportTitle}>Ayuda y soporte</Text><Text style={styles.supportText}>Escríbenos a {LEGAL.email}</Text><Button onPress={() => setSupportVisible(false)}>Cerrar</Button></Pressable></Pressable></Modal><Modal transparent visible={editVisible} animationType="fade" onRequestClose={() => setEditVisible(false)}><Pressable style={styles.supportOverlay} onPress={() => setEditVisible(false)}><Pressable style={styles.supportModal} onPress={(event) => event.stopPropagation()}><Text style={styles.supportTitle}>Editar nombre</Text><TextInput value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="words" /><Button onPress={updateName}>Guardar</Button><Button variant="secondary" onPress={() => setEditVisible(false)}>Cancelar</Button></Pressable></Pressable></Modal></Screen>;
 }
 
 function SettingRow({ icon, label, onPress }) { return <Pressable onPress={onPress} style={styles.settingRow}><Icon name={icon} color={colors.blue} /><Text style={styles.preferenceText}>{label}</Text><Icon name="chevron-forward" size={18} color={colors.muted} /></Pressable>; }
 function EmptyState({ text, title, icon = 'file-tray-outline' }) { return <View style={styles.empty}><View style={styles.emptyIcon}><Icon name={icon} size={28} color={colors.blue} /></View>{title && <Text style={styles.emptyTitle}>{title}</Text>}<Text style={styles.emptyText}>{text}</Text></View>; }
 
+function ConsentCheckbox({ checked, onPress, children }) {
+  return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={onPress} style={styles.consentRow}>
+    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked && <Icon name="checkmark" size={15} color={colors.white} />}</View>
+    <Text style={styles.consentText}>{children}</Text>
+  </Pressable>;
+}
+
+function LegalDocuments({ document = 'privacy', onBack }) {
+  const isPrivacy = document === 'privacy';
+  return <Screen onSwipeBack={onBack}><Header title={isPrivacy ? 'Política de Privacidad' : 'Aviso Legal y Condiciones'} onBack={onBack} /><ScrollView contentContainerStyle={styles.content}>
+    <Text style={styles.sectionKicker}>{isPrivacy ? 'PROTECCIÓN DE DATOS' : 'INFORMACIÓN LEGAL'}</Text>
+    <Text style={styles.preferenceHeading}>{isPrivacy ? 'Política de Privacidad' : 'Aviso Legal y Condiciones de Uso'}</Text>
+    <Text style={styles.legalText}>Titular: {LEGAL.entity}{'\n'}NIF: {LEGAL.nif}{'\n'}Domicilio: {LEGAL.address}{'\n'}Contacto: {LEGAL.email}</Text>
+    {isPrivacy ? <><Text style={styles.legalHeading}>Responsable y finalidad</Text><Text style={styles.legalText}>Tratamos los datos de cuenta, preferencias, historial y dispositivos para gestionar el acceso, personalizar las novedades legislativas y enviar avisos solicitados por la persona usuaria.</Text><Text style={styles.legalHeading}>Base jurídica y conservación</Text><Text style={styles.legalText}>La base jurídica es la ejecución de la cuenta y el consentimiento cuando corresponda. Conservamos los datos mientras la cuenta esté activa y los eliminamos o anonimizamos cuando se solicite su supresión, salvo obligaciones legales.</Text><Text style={styles.legalHeading}>Derechos</Text><Text style={styles.legalText}>Puedes ejercer acceso, rectificación, supresión, oposición, limitación y portabilidad escribiendo a {LEGAL.email}. También puedes reclamar ante la Agencia Española de Protección de Datos.</Text></>
+      : <><Text style={styles.legalHeading}>Condiciones de uso</Text><Text style={styles.legalText}>La aplicación ofrece información sobre novedades del BOE. El contenido es informativo y no sustituye el asesoramiento jurídico profesional ni la consulta de la publicación oficial.</Text><Text style={styles.legalHeading}>Uso responsable</Text><Text style={styles.legalText}>La persona usuaria debe custodiar sus credenciales y utilizar la aplicación de forma lícita. El acceso puede suspenderse ante usos abusivos o contrarios a estas condiciones.</Text></>}
+    <Text style={styles.metaText}>Versión legal: {LEGAL.version}</Text>
+  </ScrollView></Screen>;
+}
+
+function PasswordRecovery({ onBack }) {
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const request = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return Alert.alert('Revisa tus datos', 'Introduce un correo electrónico válido.');
+    setSubmitting(true);
+    try {
+      await apiRequest('/password-reset/request', { method: 'POST', body: JSON.stringify({ email: email.trim() }) });
+      setSent(true);
+      Alert.alert('Correo enviado', 'Revisa tu correo. Introduce el código del enlace para establecer una nueva contraseña.');
+    } catch (error) { Alert.alert('No se pudo enviar el correo', error.message); } finally { setSubmitting(false); }
+  };
+  const confirm = async () => {
+    if (!code.trim()) return Alert.alert('Revisa tus datos', 'Introduce el código de restablecimiento.');
+    if (newPassword.length < 8) return Alert.alert('Revisa tus datos', 'La contraseña debe tener al menos 8 caracteres.');
+    if (newPassword !== confirmation) return Alert.alert('Revisa tus datos', 'Las contraseñas no coinciden.');
+    setSubmitting(true);
+    try {
+      await apiRequest('/password-reset/confirm', { method: 'POST', body: JSON.stringify({ oobCode: code.trim(), newPassword }) });
+      Alert.alert('Contraseña actualizada', 'Ya puedes iniciar sesión con tu nueva contraseña.', [{ text: 'Entrar', onPress: onBack }]);
+    } catch (error) { Alert.alert('No se pudo actualizar la contraseña', error.message); } finally { setSubmitting(false); }
+  };
+  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><ScrollView contentContainerStyle={styles.authInner}><Header title="Recuperar contraseña" onBack={onBack} /><Text style={styles.authSubtitle}>Te enviaremos instrucciones a tu correo electrónico.</Text><View style={styles.authForm}><Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="tu@email.com" placeholderTextColor="#8A8380" /><Button disabled={submitting} onPress={request}>{submitting ? 'Enviando...' : 'Enviar enlace'}</Button>{sent && <><Text style={styles.label}>Código del enlace</Text><TextInput autoCapitalize="none" value={code} onChangeText={setCode} style={styles.input} placeholder="Código de restablecimiento" placeholderTextColor="#8A8380" /><Text style={styles.label}>Nueva contraseña</Text><TextInput secureTextEntry value={newPassword} onChangeText={setNewPassword} style={styles.input} placeholder="Mínimo 8 caracteres" placeholderTextColor="#8A8380" /><Text style={styles.label}>Repite la contraseña</Text><TextInput secureTextEntry value={confirmation} onChangeText={setConfirmation} style={styles.input} placeholder="Repite la contraseña" placeholderTextColor="#8A8380" /><Button disabled={submitting} onPress={confirm}>{submitting ? 'Guardando...' : 'Guardar nueva contraseña'}</Button></>}</View></ScrollView></SafeAreaView>;
+}
+
 function Auth({ onLogin }) {
   const [register, setRegister] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [legalDocument, setLegalDocument] = useState(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [barNumber, setBarNumber] = useState('');
+  const [barAssociation, setBarAssociation] = useState('');
+  const [specialties, setSpecialties] = useState([]);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email)) return Alert.alert('Revisa tus datos', 'Introduce un correo electrónico válido.');
     if (register && !name.trim()) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.');
-    if (password.length < 6) return Alert.alert('Revisa tus datos', 'La contraseña debe tener al menos 6 caracteres.');
+    if (password.length < 8) return Alert.alert('Revisa tus datos', 'La contraseña debe tener al menos 8 caracteres.');
+    if (register && (!termsAccepted || !privacyAccepted)) return Alert.alert('Revisa tus datos', 'Debes aceptar el Aviso Legal y la Política de Privacidad.');
     setSubmitting(true);
     try {
-      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password, name: name.trim() }) });
+      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password, name: name.trim(), barNumber: barNumber.trim() || undefined, barAssociation: barAssociation.trim() || undefined, specialties, termsAccepted, privacyAccepted }) });
       if (register) {
         const loginPayload = await apiRequest('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
         payload = { ...loginPayload, user: { ...loginPayload.user, name: payload.user?.name || name.trim() } };
@@ -372,7 +465,9 @@ function Auth({ onLogin }) {
       Alert.alert(register ? 'No se pudo crear la cuenta' : 'No se pudo iniciar sesión', error.message);
     } finally { setSubmitting(false); }
   };
-  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text>{register && <><Text style={styles.label}>Nombre</Text><TextInput autoCapitalize="words" value={name} onChangeText={setName} placeholder="Tu nombre"   placeholderTextColor="#8A8380" style={styles.input} /></>}<Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com"   placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 6 caracteres"   placeholderTextColor="#8A8380" style={styles.input} /><Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><Pressable onPress={() => setRegister(!register)}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  if (recovering) return <PasswordRecovery onBack={() => setRecovering(false)} />;
+  if (legalDocument) return <LegalDocuments document={legalDocument} onBack={() => setLegalDocument(null)} />;
+  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text>{register && <><Text style={styles.label}>Nombre</Text><TextInput autoCapitalize="words" value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.formHint}>Datos profesionales opcionales</Text><Text style={styles.label}>Número de colegiado</Text><TextInput value={barNumber} onChangeText={setBarNumber} placeholder="Ej. 12345" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Colegio o territorio</Text><TextInput value={barAssociation} onChangeText={setBarAssociation} placeholder="Ej. Tarragona" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Materias de interés</Text><View style={styles.specialtyGrid}>{registrationSpecialties.map((specialty) => <Pressable key={specialty} onPress={() => setSpecialties((current) => current.includes(specialty) ? current.filter((item) => item !== specialty) : [...current, specialty])} style={[styles.specialtyChip, specialties.includes(specialty) && styles.specialtyChipSelected]}><Text style={[styles.specialtyChipText, specialties.includes(specialty) && styles.specialtyChipTextSelected]}>{specialty}</Text></Pressable>)}</View></>}<Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 8 caracteres" placeholderTextColor="#8A8380" style={styles.input} />{register && <><ConsentCheckbox checked={termsAccepted} onPress={() => setTermsAccepted(!termsAccepted)}>Acepto el <Text style={styles.inlineLink} onPress={() => setLegalDocument('terms')}>Aviso Legal y Condiciones de Uso</Text>.</ConsentCheckbox><ConsentCheckbox checked={privacyAccepted} onPress={() => setPrivacyAccepted(!privacyAccepted)}>Acepto la <Text style={styles.inlineLink} onPress={() => setLegalDocument('privacy')}>Política de Privacidad</Text>.</ConsentCheckbox></>}<Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><View style={styles.authActions}><View style={styles.authActionRow}>{!register && <Pressable onPress={() => setRecovering(true)} style={[styles.authAction, styles.authActionDivider]}><Text style={styles.authLink}>¿Has olvidado tu contraseña?</Text></Pressable>}<Pressable onPress={() => setRegister(!register)} style={styles.authAction}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></View></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Screen({ children, withNav = false, active, navigate, refreshing = false, onRefresh, onSwipeBack }) {
@@ -432,6 +527,7 @@ export default function App() {
     if (route === 'detail') return navigate('news');
     if (route === 'filters') return navigate('news');
     if (route === 'notification-preferences') return navigate('profile');
+    if (route === 'legal') return navigate('profile');
     if (route === 'alerts' || route === 'history' || route === 'profile') return navigate('home');
     return navigate('home');
   };
@@ -482,16 +578,24 @@ export default function App() {
     }
   };
   const markNotificationRead = async (notification) => {
+    setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read: true } : item));
     if (!notification.read) {
       try {
         await apiRequest(`/notifications/${notification.id}/read`, { method: 'PATCH' }, session.token);
-        setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, read: true } : item));
       } catch (requestError) {
         setActivityError(requestError.message);
       }
     }
-    const update = updatesFromApi.find((item) => item.reference === notification.newsId);
-    if (update) navigate('detail', update);
+    const update = updatesFromApi.find((item) => item.reference === notification.newsId || item.id === notification.newsId)
+      || {
+        reference: notification.newsId || notification.id,
+        title: notification.title,
+        category: notification.category,
+        date: notification.updatedAt || notification.sentAt,
+        summary: notification.summary,
+        content: notification.content,
+      };
+    navigate('detail', update);
   };
   const markViewed = async (newsId) => {
     if (!session?.token || !newsId) return;
@@ -520,7 +624,8 @@ export default function App() {
             : route === 'history' ? <History navigate={navigate} history={history} updates={updatesFromApi} loading={activityLoading} error={activityError} />
                 : route === 'alerts' ? <Alerts navigate={navigate} notifications={notifications} loading={activityLoading} error={activityError} onRead={markNotificationRead} />
                   : route === 'notification-preferences' ? <NotificationPreferences navigate={navigate} token={session.token} preferences={preferences} onPreferencesChanged={setPreferences} onSwipeBack={goBack} />
-                : <Profile navigate={navigate} user={session.user} token={session.token} onUserUpdated={(user) => setSession((current) => ({ ...current, user }))} logout={logout} />;
+                  : route === 'legal' ? <LegalDocuments document={params?.document} onBack={goBack} />
+                : <Profile navigate={navigate} user={session.user} token={session.token} refreshToken={session.refreshToken} onTokenRefreshed={(credentials) => setSession((current) => ({ ...current, token: credentials.token, refreshToken: credentials.refreshToken || current.refreshToken }))} onUserUpdated={(user) => setSession((current) => ({ ...current, user }))} onAccountDeleted={logout} logout={logout} />;
   return <SafeAreaProvider>{content}</SafeAreaProvider>;
 }
 
@@ -532,10 +637,10 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', color: colors.navy, fontSize: 19, fontWeight: '700' },
   headerButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
   headerButtonPlaceholder: { width: 40, height: 40 },
-  homeHero: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  greeting: { marginTop: 12, marginBottom: 28 }, eyebrow: { color: colors.gold, fontSize: 11, letterSpacing: 1.4, fontWeight: '800', marginBottom: 10 },
+  homeHero: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  greeting: { flex: 1, marginTop: 12, marginBottom: 28, paddingRight: 12 }, homeBrand: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 }, eyebrow: { flex: 1, color: colors.gold, fontSize: 11, lineHeight: 15, letterSpacing: 1.2, fontWeight: '800' },
   pageTitle: { color: colors.navy, fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -.5 }, subtitle: { color: colors.muted, fontSize: 15, lineHeight: 22, marginTop: 6 },
-  heroSeal: { width: 76, height: 42, alignItems: 'center', justifyContent: 'center', marginTop: 15 }, heroLogo: { width: 76, height: 42 },
+  heroSeal: { width: 72, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: 12 }, heroLogo: { width: 72, height: 44 },
   insightCard: { backgroundColor: colors.goldSoft, borderRadius: 18, padding: 17, marginBottom: 27, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E8C9D2' },
   insightLabel: { color: colors.gold, fontSize: 10, fontWeight: '800', letterSpacing: 1.1, marginBottom: 5 }, insightTitle: { color: colors.navy, fontSize: 15, fontWeight: '700' }, insightIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }, sectionTitle: { color: colors.navy, fontSize: 18, fontWeight: '700', marginBottom: 14 }, link: { color: colors.blue, fontWeight: '700' },
@@ -547,8 +652,8 @@ const styles = StyleSheet.create({
   detail: { padding: 4, paddingBottom: 32 }, detailBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 }, detailIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.goldSoft, alignItems: 'center', justifyContent: 'center' }, detailTitle: { color: colors.navy, fontSize: 28, lineHeight: 35, fontWeight: '800', marginVertical: 12, letterSpacing: -.4 }, divider: { height: 1, backgroundColor: colors.border, marginVertical: 23 }, detailLead: { color: colors.ink, fontSize: 18, lineHeight: 28, fontWeight: '600' }, bodyText: { color: colors.muted, fontSize: 16, lineHeight: 25, marginTop: 18 },
   content: { paddingBottom: 30 }, sectionKicker: { color: colors.gold, fontSize: 11, letterSpacing: 1.2, fontWeight: '800', marginTop: 8 }, preferenceHeading: { color: colors.navy, fontSize: 25, fontWeight: '800', marginTop: 8, marginBottom: 4 }, preferenceList: { backgroundColor: colors.white, borderRadius: 16, overflow: 'hidden', marginTop: 20, borderWidth: 1, borderColor: colors.border }, preferenceRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.border, padding: 16 }, preferenceText: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: '600', marginLeft: 13 }, categoryIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: colors.goldSoft },
   profile: { alignItems: 'center', marginVertical: 18 }, avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: colors.gold, fontSize: 27, fontWeight: '800' }, profileName: { color: colors.navy, fontSize: 22, fontWeight: '800', marginTop: 13 }, editProfileLink: { color: colors.blue, fontWeight: '700', marginTop: 8 }, settingsCard: { backgroundColor: colors.white, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 14 }, settingRow: { flexDirection: 'row', alignItems: 'center', padding: 17, borderBottomWidth: 1, borderBottomColor: colors.border }, supportOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(23, 21, 21, 0.55)' }, supportModal: { width: '100%', maxWidth: 380, borderRadius: 20, padding: 24, alignItems: 'center', backgroundColor: colors.white, shadowColor: '#000000', shadowOpacity: .2, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 }, supportIcon: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.goldSoft, marginBottom: 12 }, supportTitle: { color: colors.navy, fontSize: 20, fontWeight: '800', marginBottom: 8 }, supportText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  alertCard: { backgroundColor: colors.white, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 30, borderWidth: 1, borderColor: colors.border }, alertIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, flex: { flex: 1 }, countText: { color: colors.blue, fontSize: 12, fontWeight: '700' }, notificationRow: { backgroundColor: colors.white, borderRadius: 14, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border }, notificationUnread: { borderColor: '#D7A5B2', backgroundColor: '#FDF7F9' }, notificationDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.gold, marginRight: 12 }, notificationTitle: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: '700', marginBottom: 4 }, empty: { alignItems: 'center', justifyContent: 'center', padding: 45, gap: 10 }, emptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#F1E6E9', alignItems: 'center', justifyContent: 'center', marginBottom: 3 }, emptyTitle: { color: colors.navy, fontSize: 16, fontWeight: '800', textAlign: 'center' }, emptyText: { textAlign: 'center', color: colors.muted, lineHeight: 22 },
+  alertCard: { backgroundColor: colors.white, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 30, borderWidth: 1, borderColor: colors.border }, alertIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, flex: { flex: 1 }, countText: { color: colors.blue, fontSize: 12, fontWeight: '700' },   notificationRow: { backgroundColor: colors.white, borderRadius: 14, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border }, notificationUnread: { borderColor: '#D7A5B2', backgroundColor: '#FDF7F9' }, notificationRead: { opacity: .7 }, notificationDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.gold, marginRight: 12 }, notificationDotRead: { backgroundColor: colors.border }, notificationTitle: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: '700', marginBottom: 4 }, notificationTitleRead: { fontWeight: '500' }, empty: { alignItems: 'center', justifyContent: 'center', padding: 45, gap: 10 }, emptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#F1E6E9', alignItems: 'center', justifyContent: 'center', marginBottom: 3 }, emptyTitle: { color: colors.navy, fontSize: 16, fontWeight: '800', textAlign: 'center' }, emptyText: { textAlign: 'center', color: colors.muted, lineHeight: 22 },
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 82, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 9, shadowColor: '#000000', shadowOpacity: .08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 }, navItem: { alignItems: 'center', gap: 3, minWidth: 64, paddingHorizontal: 8 }, navItemActive: { }, navIcon: { width: 38, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: colors.navy }, navLabel: { color: colors.muted, fontSize: 11 }, navLabelActive: { color: colors.navy, fontWeight: '800' },
-  auth: { flex: 1, backgroundColor: colors.paper }, authKeyboard: { flex: 1 }, authInner: { flexGrow: 1, justifyContent: 'space-between', padding: 20, paddingTop: 52, paddingBottom: 28 }, logoCircle: { width: 180, height: 81, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, authLogo: { width: 180, height: 81 }, logoMark: { color: colors.gold, fontSize: 58, fontWeight: '900' }, authTitle: { color: colors.navy, fontSize: 37, fontWeight: '800', marginTop: 8 }, authSubtitle: { color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 9 }, authForm: { backgroundColor: colors.white, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 20, marginTop: 30, shadowColor: '#000000', shadowOpacity: .06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, formIntro: { color: colors.navy, fontSize: 21, fontWeight: '700', marginBottom: 8 }, label: { color: colors.ink, fontWeight: '700', fontSize: 13, marginBottom: 7, marginTop: 14 }, input: { backgroundColor: colors.white, borderRadius: 13, padding: 15, fontSize: 16, color: colors.ink, borderWidth: 1, borderColor: colors.border }, authLink: { color: colors.gold, textAlign: 'center', marginTop: 20, fontWeight: '700' },
+  auth: { flex: 1, backgroundColor: colors.paper }, authKeyboard: { flex: 1 }, authInner: { flexGrow: 1, justifyContent: 'space-between', padding: 20, paddingTop: 52, paddingBottom: 28 }, logoCircle: { width: 180, height: 81, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, authLogo: { width: 180, height: 81 }, logoMark: { color: colors.gold, fontSize: 58, fontWeight: '900' }, authTitle: { color: colors.navy, fontSize: 37, fontWeight: '800', marginTop: 8 }, authSubtitle: { color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 9 }, authForm: { backgroundColor: colors.white, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 20, marginTop: 30, shadowColor: '#000000', shadowOpacity: .06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, formIntro: { color: colors.navy, fontSize: 21, fontWeight: '700', marginBottom: 8 }, formHint: { color: colors.muted, fontSize: 13, marginTop: 18 }, label: { color: colors.ink, fontWeight: '700', fontSize: 13, marginBottom: 7, marginTop: 14 }, input: { backgroundColor: colors.white, borderRadius: 13, padding: 15, fontSize: 16, color: colors.ink, borderWidth: 1, borderColor: colors.border },   authActions: { marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border }, authActionRow: { flexDirection: 'row', alignItems: 'stretch' }, authAction: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, authActionDivider: { borderRightWidth: 1, borderRightColor: colors.border }, authLink: { color: colors.gold, textAlign: 'center', fontSize: 13, lineHeight: 18, fontWeight: '700' }, inlineLink: { color: colors.gold, fontWeight: '700' }, specialtyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }, specialtyChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: colors.white }, specialtyChipSelected: { borderColor: colors.gold, backgroundColor: colors.goldSoft }, specialtyChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, specialtyChipTextSelected: { color: colors.gold }, consentRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 14 }, checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center', marginRight: 9 }, checkboxChecked: { backgroundColor: colors.gold, borderColor: colors.gold }, consentText: { flex: 1, color: colors.muted, lineHeight: 20 }, legalText: { color: colors.muted, fontSize: 15, lineHeight: 23, marginTop: 12 }, legalHeading: { color: colors.navy, fontSize: 17, fontWeight: '800', marginTop: 24 },
   statusText: { color: colors.muted, textAlign: 'center', paddingVertical: 28 }, errorText: { color: colors.danger, backgroundColor: '#FBEAEA', borderRadius: 12, padding: 13, marginBottom: 14, lineHeight: 20 },
 });

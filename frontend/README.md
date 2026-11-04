@@ -4,9 +4,10 @@ Aplicación móvil multiplataforma construida con React Native y Expo. Incluye
 acceso y registro mediante la API, inicio, novedades, detalle, filtros,
 historial, avisos, perfil y preferencias.
 
-La autenticación, las novedades y las preferencias se consumen desde la API
-del backend. El botón de consulta al BOE lo indica explícitamente cuando aún
-no hay un enlace oficial asociado.
+El login, el registro, el perfil, las preferencias, el historial y los avisos
+se consumen desde la API del backend. La recuperación de contraseña envía el
+enlace directamente mediante Firebase Identity Toolkit. El botón de consulta
+al BOE lo indica explícitamente cuando aún no hay un enlace oficial asociado.
 
 ## Abrir y ejecutar
 
@@ -29,9 +30,8 @@ La aplicación consume el backend mediante `EXPO_PUBLIC_API_URL`. Para
 desarrollo local usa `http://localhost:3006` (o `http://10.0.2.2:3006` en un
 emulador Android). En un teléfono físico, crea un túnel para el backend:
 
-La recuperación de contraseña se envía directamente mediante Firebase
-Identity Toolkit. Configura también `EXPO_PUBLIC_FIREBASE_WEB_API_KEY` con la
-Web API Key del proyecto Firebase en el `.env` local.
+Configura también `EXPO_PUBLIC_FIREBASE_WEB_API_KEY` con la Web API Key del
+proyecto Firebase en el `.env` local.
 
 ```shell
 cloudflared tunnel --url http://localhost:3006
@@ -42,6 +42,7 @@ Copia la URL `https://...trycloudflare.com` generada y configúrala en
 
 ```shell
 printf 'EXPO_PUBLIC_API_URL=https://TU-URL.trycloudflare.com\n' > .env
+# Añade EXPO_PUBLIC_FIREBASE_WEB_API_KEY=<Web API Key de Firebase>.
 ```
 
 Después inicia Expo con su propio túnel:
@@ -56,7 +57,9 @@ Cloudflare cambia al crear un túnel nuevo.
 ## Recorrido de la demo
 
 - La app abre directamente Iniciar sesión. Completa un correo y una contraseña
-  de al menos seis caracteres y pulsa **Entrar** para abrir Inicio.
+  de al menos ocho caracteres y pulsa **Entrar** para abrir Inicio.
+- La sesión se guarda localmente y se restaura al recargar la web o reabrir
+  Expo; si el token caduca, se renueva con el refresh token.
 - Desde Perfil puedes cerrar sesión y volver a Iniciar sesión.
 - En Inicio, abre **Ver todas**, toca una tarjeta para ver su detalle o usa el
   icono de controles para abrir las áreas jurídicas.
@@ -65,13 +68,21 @@ Cloudflare cambia al crear un túnel nuevo.
 - Desde Perfil puedes consultar el Aviso Legal y la Política de Privacidad, o
   solicitar la eliminación definitiva de la cuenta y sus datos.
 - El registro exige aceptar de forma expresa y no premarcada ambos documentos
-  legales. También permite indicar, de forma opcional, número de colegiado,
-  número de colegiado y materias jurídicas de interés. El acceso incluye
-  recuperación mediante correo y código temporal.
+  legales. También permite indicar, de forma opcional, número de colegiado y
+  materias jurídicas de interés. Las materias se guardan en
+  `preferences/{uid}.categories` y aparecen seleccionadas en **Áreas
+  jurídicas**.
+- La recuperación solo solicita el correo. Firebase envía un enlace para
+  cambiar la contraseña; la aplicación no solicita códigos ni contraseñas
+  nuevas.
+- Desde Perfil se puede eliminar la cuenta. El backend elimina los datos
+  relacionados en Firestore y las cuentas Firebase duplicadas con el mismo
+  correo.
 - Para probar el registro, vuelve a Bienvenida y pulsa **Registrarme**.
 
-El acceso y el registro validan campos localmente y entran con cualquier dato
-válido: son interacciones de prototipo, no cuentas reales.
+El acceso y el registro usan Firebase mediante el backend; no son cuentas de
+prototipo cuando Firebase está configurado. En modo demo, el backend permite
+probar el flujo sin persistencia real.
 
 La identidad legal mostrada en la aplicación se configura mediante
 `EXPO_PUBLIC_LEGAL_ENTITY`, `EXPO_PUBLIC_LEGAL_NIF`,

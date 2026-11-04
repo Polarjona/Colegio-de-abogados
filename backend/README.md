@@ -25,11 +25,15 @@ directamente. En Docker Compose se publica en `http://localhost:3006` por
 defecto. Consulta
 [`../.env.example`](.env.example) para las variables necesarias.
 
-## Endpoints de prueba
+## Endpoints básicos
 
 - `GET /` devuelve `Marco Legal API funcionando`.
 - `GET /health` comprueba la conexión con Firebase y devuelve el estado del
   backend.
+
+Las rutas de autenticación y datos están documentadas en
+[`../docs/backend.md`](../docs/backend.md). La API usa tokens ID de Firebase
+en `Authorization: Bearer <token>` para las rutas protegidas.
 
 El backend también se puede iniciar junto con el frontend desde la raíz con
 `docker compose up --build`.

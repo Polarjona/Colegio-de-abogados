@@ -26,9 +26,10 @@ La clave privada de la cuenta de servicio no debe subirse al repositorio.
 
 ## Colecciones de Firestore
 
-- `users/{uid}`: `uid`, `email`, `name`, `createdAt`.
-- `preferences/{uid}`: `emailNotifications`, `pushNotifications`,
-  `categories`, `updatedAt`.
+- `users/{uid}`: `uid`, `email`, `name`, `barNumber`, `specialties`,
+  `createdAt`.
+- `preferences/{uid}`: `uid`, `email`, `emailNotifications`,
+  `pushNotifications`, `categories`, `updatedAt`.
 - `news/{id}`: `title`, `summary`, `content`, `sourceUrl`, `publishedAt`.
 - `deviceTokens/{fcmToken}`: `token`, `userId`, `active`, `updatedAt`.
 
@@ -87,8 +88,9 @@ misma colección con `provider: "fcm"`; el envío FCM directo requiere completar
 la configuración nativa de Firebase, mientras que Expo Go usa Expo Push.
 
 Los documentos de preferencias deben usar el UID como ID (`preferences/{uid}`).
-El backend conserva compatibilidad de lectura/escritura con documentos antiguos
-que tengan el campo `uid`, pero conviene migrarlos para evitar duplicados.
+El backend conserva compatibilidad de lectura con documentos antiguos
+relacionados por `uid`, `userId` o correo, y migra `users.specialties` a
+`preferences.categories` cuando es necesario.
 
 ### Alternativa gratuita con GitHub Actions
 
@@ -120,10 +122,10 @@ Las rutas protegidas requieren `Authorization: Bearer <Firebase ID token>`.
 - `GET /health`: comprueba el acceso a Firestore.
 - `POST /register`: crea un usuario Firebase y sus preferencias iniciales.
 - `POST /login`: inicia sesión mediante Firebase Identity Toolkit.
-- `POST /password-reset/request`: envía instrucciones de restablecimiento sin
-  revelar si el correo está registrado.
-- `POST /password-reset/confirm`: valida el código temporal de Firebase y
-  actualiza la contraseña.
+- `POST /password-reset/request`: endpoint compatible para enviar instrucciones
+  de restablecimiento sin revelar si el correo está registrado.
+- `POST /password-reset/confirm`: endpoint compatible para validar un código de
+  Firebase y actualizar la contraseña.
   También están disponibles las rutas `/auth/password-reset/request` y
   `/auth/password-reset/confirm` para clientes que agrupan las operaciones
   bajo el prefijo de autenticación.

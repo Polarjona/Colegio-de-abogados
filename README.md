@@ -5,10 +5,10 @@ publicadas en el BOE.
 
 ## Estructura
 
-- `frontend/`: aplicacion React Native con Expo (Android, iOS y web).
+- `frontend/`: aplicación React Native con Expo (Android, iOS y web).
 - `backend/`: API REST con Node.js y Express.
 - `functions/`: importación horaria del BOE y envío de notificaciones.
-- `docs/`: documentacion tecnica y requisitos.
+- `docs/`: documentación técnica y requisitos.
 
 ## Ejecución local recomendada
 
@@ -37,9 +37,9 @@ Comprueba el backend con:
 curl http://localhost:3006/health
 ```
 
-Docker Compose carga automáticamente `backend/.env`. Para usar Firebase real,
-completa ese archivo con las variables de [`backend/.env.example`](backend/.env.example).
-Si faltan credenciales, el backend puede arrancar en modo demo.
+Docker Compose carga automáticamente `backend/.env`. Para usar Firebase real, completa ese archivo con las variables de
+[`backend/.env.example`](backend/.env.example). Si faltan credenciales, el
+backend puede arrancar en modo demo; ese modo no debe usarse con datos reales.
 
 
 Si el puerto `3006` está ocupado:
@@ -86,6 +86,7 @@ Copia la URL `https://...trycloudflare.com` que muestre Cloudflare.
 ```shell
 cd /home/b_pol_arjona/Colegio-de-abogados/frontend
 printf 'EXPO_PUBLIC_API_URL=https://TU-URL.trycloudflare.com\n' > .env
+# Añade también EXPO_PUBLIC_FIREBASE_WEB_API_KEY con la Web API Key de Firebase.
 npm ci
 npx expo start --tunnel
 ```
@@ -107,7 +108,7 @@ npm run dev
 ```
 
 La API se inicia en <http://localhost:8080>. `GET /` devuelve un mensaje de
-estado y `GET /health` comprueba la conexion con Firebase.
+estado y `GET /health` comprueba la conexión con Firebase.
 
 ## Equipo
 

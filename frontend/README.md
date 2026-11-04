@@ -29,6 +29,10 @@ La aplicación consume el backend mediante `EXPO_PUBLIC_API_URL`. Para
 desarrollo local usa `http://localhost:3006` (o `http://10.0.2.2:3006` en un
 emulador Android). En un teléfono físico, crea un túnel para el backend:
 
+La recuperación de contraseña se envía directamente mediante Firebase
+Identity Toolkit. Configura también `EXPO_PUBLIC_FIREBASE_WEB_API_KEY` con la
+Web API Key del proyecto Firebase en el `.env` local.
+
 ```shell
 cloudflared tunnel --url http://localhost:3006
 ```
@@ -62,7 +66,7 @@ Cloudflare cambia al crear un túnel nuevo.
   solicitar la eliminación definitiva de la cuenta y sus datos.
 - El registro exige aceptar de forma expresa y no premarcada ambos documentos
   legales. También permite indicar, de forma opcional, número de colegiado,
-  colegio o territorio y materias jurídicas de interés. El acceso incluye
+  número de colegiado y materias jurídicas de interés. El acceso incluye
   recuperación mediante correo y código temporal.
 - Para probar el registro, vuelve a Bienvenida y pulsa **Registrarme**.
 

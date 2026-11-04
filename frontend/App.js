@@ -20,6 +20,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const APP_LOGO = require('./assets/icat-logo.png');
@@ -68,6 +69,8 @@ const sortModes = [
   { value: 'alphabetical', label: 'A-Z' },
 ];
 const API_URL = process.env.EXPO_PUBLIC_API_URL || (Platform.OS === 'android' ? 'http://10.0.2.2:3006' : 'http://localhost:3006');
+const FIREBASE_WEB_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_WEB_API_KEY;
+const SESSION_STORAGE_KEY = '@marco-legal/session';
 const LEGAL = {
   entity: process.env.EXPO_PUBLIC_LEGAL_ENTITY || 'Il·lustre Col·legi de l’Advocacia de Tarragona',
   nif: process.env.EXPO_PUBLIC_LEGAL_NIF || 'NIF pendiente de configuración',
@@ -105,7 +108,7 @@ async function registerPushToken(token) {
 }
 
 async function apiRequest(path, options = {}, token) {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_URL.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) },
   });
@@ -113,6 +116,25 @@ async function apiRequest(path, options = {}, token) {
   if (!response.ok) {
     const error = new Error(payload.error || `La API respondió con ${response.status}.`);
     error.status = response.status;
+    throw error;
+  }
+
+  return payload;
+}
+
+async function firebasePasswordRequest(endpoint, body) {
+  if (!FIREBASE_WEB_API_KEY) {
+    throw new Error('Falta configurar EXPO_PUBLIC_FIREBASE_WEB_API_KEY');
+  }
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${endpoint}?key=${FIREBASE_WEB_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || 'Firebase no pudo procesar la recuperación');
+    error.code = payload.error?.message;
     throw error;
   }
   return payload;
@@ -130,6 +152,22 @@ function normalizeNews(items) {
 
 function displayText(value, fallback = '') {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback;
+}
+
+function FloatingInput({ label, value, onChangeText, ...props }) {
+  const [focused, setFocused] = useState(false);
+  const floated = focused || Boolean(value);
+  return <View style={styles.floatingInput}>
+    <Text style={[styles.floatingLabel, floated && styles.floatingLabelActive]}>{label}</Text>
+    <TextInput
+      {...props}
+      value={value}
+      onChangeText={onChangeText}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={styles.floatingTextInput}
+    />
+  </View>;
 }
 
 function normalizeNotifications(items) {
@@ -299,17 +337,40 @@ function Detail({ update, navigate, onSwipeBack, onViewed }) {
   </ScrollView></Screen>;
 }
 
-function Filters({ navigate, token, preferences, onSwipeBack }) {
+function Filters({ navigate, token, preferences, onPreferencesChanged, onSwipeBack }) {
   const [selected, setSelected] = useState(categories);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (preferences?.categories) setSelected(preferences.categories);
-  }, [preferences]);
+    let active = true;
+    apiRequest('/preferences', {}, token)
+      .then((payload) => {
+        const latest = payload.preferences || {};
+        const nextPreferences = {
+          ...latest,
+          emailNotifications: latest.emailNotifications !== false,
+          pushNotifications: latest.pushNotifications !== false,
+          categories: Array.isArray(latest.categories)
+            ? latest.categories.filter((category) => typeof category === 'string')
+            : [],
+        };
+        if (active) {
+          setSelected(nextPreferences.categories);
+          onPreferencesChanged(nextPreferences);
+        }
+      })
+      .catch((error) => {
+        if (active) Alert.alert('No se pudieron cargar las áreas', error.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
   const toggle = (category) => setSelected((value) => value.includes(category) ? value.filter((item) => item !== category) : [...value, category]);
   const save = async () => {
     setSaving(true);
     try {
-      await apiRequest('/preferences', { method: 'PUT', body: JSON.stringify({ emailNotifications: preferences?.emailNotifications ?? true, pushNotifications: preferences?.pushNotifications ?? true, categories: selected }) }, token);
+      const payload = await apiRequest('/preferences', { method: 'PUT', body: JSON.stringify({ emailNotifications: preferences?.emailNotifications ?? true, pushNotifications: preferences?.pushNotifications ?? true, categories: selected }) }, token);
+      onPreferencesChanged(payload.preferences);
       navigate('news');
     } catch (error) {
       Alert.alert('No se han guardado las preferencias', error.message);
@@ -357,7 +418,27 @@ function Profile({ navigate, logout, user, token, refreshToken, onTokenRefreshed
     };
   }, [token]);
   const initials = (user?.name || user?.email || 'Usuario').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  const deleteAccount = () => Alert.alert('Eliminar cuenta y datos', 'Esta acción es permanente y borrará tu perfil, preferencias, avisos e historial.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar definitivamente', style: 'destructive', onPress: async () => { setDeleting(true); try { await apiRequest('/account', { method: 'DELETE' }, token); onAccountDeleted(); } catch (error) { Alert.alert('No se pudo eliminar la cuenta', error.message); } finally { setDeleting(false); } } }]);
+  const deleteAccount = () => Alert.alert('Eliminar cuenta y datos', 'Esta acción es permanente y borrará tu perfil, preferencias, avisos e historial.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar definitivamente', style: 'destructive', onPress: async () => {
+    setDeleting(true);
+    try {
+      try {
+        await apiRequest('/account', { method: 'DELETE' }, token);
+      } catch (error) {
+        if (error.status !== 401 || !refreshToken) throw error;
+        const refreshed = await apiRequest('/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken })
+        });
+        onTokenRefreshed(refreshed);
+        await apiRequest('/account', { method: 'DELETE' }, refreshed.token);
+      }
+      onAccountDeleted();
+    } catch (error) {
+      Alert.alert('No se pudo eliminar la cuenta', error.message);
+    } finally {
+      setDeleting(false);
+    }
+  } }]);
   const updateName = async () => {
     const cleanName = name.trim();
     if (!cleanName) return Alert.alert('Revisa tus datos', 'Introduce tu nombre.');
@@ -408,31 +489,19 @@ function LegalDocuments({ document = 'privacy', onBack }) {
 
 function PasswordRecovery({ onBack }) {
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const request = async () => {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return Alert.alert('Revisa tus datos', 'Introduce un correo electrónico válido.');
     setSubmitting(true);
     try {
-      await apiRequest('/password-reset/request', { method: 'POST', body: JSON.stringify({ email: email.trim() }) });
-      setSent(true);
-      Alert.alert('Correo enviado', 'Revisa tu correo. Introduce el código del enlace para establecer una nueva contraseña.');
+      await firebasePasswordRequest('sendOobCode', {
+        requestType: 'PASSWORD_RESET',
+        email: email.trim().toLowerCase(),
+      });
+      Alert.alert('Correo enviado', 'Revisa tu correo y pulsa el enlace de Firebase para establecer una nueva contraseña.');
     } catch (error) { Alert.alert('No se pudo enviar el correo', error.message); } finally { setSubmitting(false); }
   };
-  const confirm = async () => {
-    if (!code.trim()) return Alert.alert('Revisa tus datos', 'Introduce el código de restablecimiento.');
-    if (newPassword.length < 8) return Alert.alert('Revisa tus datos', 'La contraseña debe tener al menos 8 caracteres.');
-    if (newPassword !== confirmation) return Alert.alert('Revisa tus datos', 'Las contraseñas no coinciden.');
-    setSubmitting(true);
-    try {
-      await apiRequest('/password-reset/confirm', { method: 'POST', body: JSON.stringify({ oobCode: code.trim(), newPassword }) });
-      Alert.alert('Contraseña actualizada', 'Ya puedes iniciar sesión con tu nueva contraseña.', [{ text: 'Entrar', onPress: onBack }]);
-    } catch (error) { Alert.alert('No se pudo actualizar la contraseña', error.message); } finally { setSubmitting(false); }
-  };
-  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><ScrollView contentContainerStyle={styles.authInner}><Header title="Recuperar contraseña" onBack={onBack} /><Text style={styles.authSubtitle}>Te enviaremos instrucciones a tu correo electrónico.</Text><View style={styles.authForm}><Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="tu@email.com" placeholderTextColor="#8A8380" /><Button disabled={submitting} onPress={request}>{submitting ? 'Enviando...' : 'Enviar enlace'}</Button>{sent && <><Text style={styles.label}>Código del enlace</Text><TextInput autoCapitalize="none" value={code} onChangeText={setCode} style={styles.input} placeholder="Código de restablecimiento" placeholderTextColor="#8A8380" /><Text style={styles.label}>Nueva contraseña</Text><TextInput secureTextEntry value={newPassword} onChangeText={setNewPassword} style={styles.input} placeholder="Mínimo 8 caracteres" placeholderTextColor="#8A8380" /><Text style={styles.label}>Repite la contraseña</Text><TextInput secureTextEntry value={confirmation} onChangeText={setConfirmation} style={styles.input} placeholder="Repite la contraseña" placeholderTextColor="#8A8380" /><Button disabled={submitting} onPress={confirm}>{submitting ? 'Guardando...' : 'Guardar nueva contraseña'}</Button></>}</View></ScrollView></SafeAreaView>;
+  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><Header title="Recuperar contraseña" onBack={onBack} /><Text style={styles.authSubtitle}>Te enviaremos un enlace de Firebase a tu correo electrónico.</Text><View style={styles.authForm}><FloatingInput label="Correo electrónico" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#8A8380" /><Button disabled={submitting} onPress={request}>{submitting ? 'Enviando...' : 'Enviar enlace'}</Button></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Auth({ onLogin }) {
@@ -443,7 +512,6 @@ function Auth({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [barNumber, setBarNumber] = useState('');
-  const [barAssociation, setBarAssociation] = useState('');
   const [specialties, setSpecialties] = useState([]);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -455,9 +523,17 @@ function Auth({ onLogin }) {
     if (register && (!termsAccepted || !privacyAccepted)) return Alert.alert('Revisa tus datos', 'Debes aceptar el Aviso Legal y la Política de Privacidad.');
     setSubmitting(true);
     try {
-      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password, name: name.trim(), barNumber: barNumber.trim() || undefined, barAssociation: barAssociation.trim() || undefined, specialties, termsAccepted, privacyAccepted }) });
+      let payload = await apiRequest(register ? '/register' : '/login', { method: 'POST', body: JSON.stringify({ email, password, name: name.trim(), barNumber: barNumber.trim() || undefined, specialties, termsAccepted, privacyAccepted }) });
       if (register) {
         const loginPayload = await apiRequest('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        await apiRequest('/preferences', {
+          method: 'PUT',
+          body: JSON.stringify({
+            emailNotifications: true,
+            pushNotifications: true,
+            categories: specialties,
+          }),
+        }, loginPayload.token);
         payload = { ...loginPayload, user: { ...loginPayload.user, name: payload.user?.name || name.trim() } };
       }
       onLogin(payload);
@@ -467,7 +543,7 @@ function Auth({ onLogin }) {
   };
   if (recovering) return <PasswordRecovery onBack={() => setRecovering(false)} />;
   if (legalDocument) return <LegalDocuments document={legalDocument} onBack={() => setLegalDocument(null)} />;
-  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text>{register && <><Text style={styles.label}>Nombre</Text><TextInput autoCapitalize="words" value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.formHint}>Datos profesionales opcionales</Text><Text style={styles.label}>Número de colegiado</Text><TextInput value={barNumber} onChangeText={setBarNumber} placeholder="Ej. 12345" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Colegio o territorio</Text><TextInput value={barAssociation} onChangeText={setBarAssociation} placeholder="Ej. Tarragona" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Materias de interés</Text><View style={styles.specialtyGrid}>{registrationSpecialties.map((specialty) => <Pressable key={specialty} onPress={() => setSpecialties((current) => current.includes(specialty) ? current.filter((item) => item !== specialty) : [...current, specialty])} style={[styles.specialtyChip, specialties.includes(specialty) && styles.specialtyChipSelected]}><Text style={[styles.specialtyChipText, specialties.includes(specialty) && styles.specialtyChipTextSelected]}>{specialty}</Text></Pressable>)}</View></>}<Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 8 caracteres" placeholderTextColor="#8A8380" style={styles.input} />{register && <><ConsentCheckbox checked={termsAccepted} onPress={() => setTermsAccepted(!termsAccepted)}>Acepto el <Text style={styles.inlineLink} onPress={() => setLegalDocument('terms')}>Aviso Legal y Condiciones de Uso</Text>.</ConsentCheckbox><ConsentCheckbox checked={privacyAccepted} onPress={() => setPrivacyAccepted(!privacyAccepted)}>Acepto la <Text style={styles.inlineLink} onPress={() => setLegalDocument('privacy')}>Política de Privacidad</Text>.</ConsentCheckbox></>}<Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><View style={styles.authActions}><View style={styles.authActionRow}>{!register && <Pressable onPress={() => setRecovering(true)} style={[styles.authAction, styles.authActionDivider]}><Text style={styles.authLink}>¿Has olvidado tu contraseña?</Text></Pressable>}<Pressable onPress={() => setRegister(!register)} style={styles.authAction}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></View></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
+  return <SafeAreaView style={styles.auth}><StatusBar style="dark" /><KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.authKeyboard}><ScrollView contentContainerStyle={styles.authInner} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}><View><View style={styles.authBrand}><View style={styles.logoCircle}><Image source={APP_LOGO} style={styles.authLogo} resizeMode="contain" /></View><Text style={styles.authInstitution}>IL·LUSTRE{'\n'}COL·LEGI DE{'\n'}L’ADVOCACIA</Text></View><Text style={styles.authSubtitle}>{register ? 'Crea tu cuenta para estar al día.' : 'La actualidad jurídica en un solo lugar.'}</Text></View><View style={styles.authForm}><Text style={styles.formIntro}>{register ? 'Empieza ahora' : 'Bienvenido de nuevo'}</Text>{register && <><Text style={styles.label}>Nombre</Text><TextInput autoCapitalize="words" value={name} onChangeText={setName} placeholder="Tu nombre" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.formHint}>Datos profesionales opcionales</Text><Text style={styles.label}>Número de colegiado</Text><TextInput value={barNumber} onChangeText={setBarNumber} placeholder="Ej. 12345" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Materias de interés</Text><View style={styles.specialtyGrid}>{registrationSpecialties.map((specialty) => <Pressable key={specialty} onPress={() => setSpecialties((current) => current.includes(specialty) ? current.filter((item) => item !== specialty) : [...current, specialty])} style={[styles.specialtyChip, specialties.includes(specialty) && styles.specialtyChipSelected]}><Text style={[styles.specialtyChipText, specialties.includes(specialty) && styles.specialtyChipTextSelected]}>{specialty}</Text></Pressable>)}</View></>}<Text style={styles.label}>Correo electrónico</Text><TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="tu@email.com" placeholderTextColor="#8A8380" style={styles.input} /><Text style={styles.label}>Contraseña</Text><TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="Mínimo 8 caracteres" placeholderTextColor="#8A8380" style={styles.input} />{register && <><ConsentCheckbox checked={termsAccepted} onPress={() => setTermsAccepted(!termsAccepted)}>Acepto el <Text style={styles.inlineLink} onPress={() => setLegalDocument('terms')}>Aviso Legal y Condiciones de Uso</Text>.</ConsentCheckbox><ConsentCheckbox checked={privacyAccepted} onPress={() => setPrivacyAccepted(!privacyAccepted)}>Acepto la <Text style={styles.inlineLink} onPress={() => setLegalDocument('privacy')}>Política de Privacidad</Text>.</ConsentCheckbox></>}<Button variant="auth" disabled={submitting} onPress={submit}>{submitting ? 'Conectando...' : register ? 'Crear cuenta' : 'Entrar'}</Button><View style={styles.authActions}><View style={styles.authActionRow}>{!register && <Pressable onPress={() => setRecovering(true)} style={[styles.authAction, styles.authActionDivider]}><Text style={styles.authLink}>¿Has olvidado tu contraseña?</Text></Pressable>}<Pressable onPress={() => setRegister(!register)} style={styles.authAction}><Text style={styles.authLink}>{register ? '¿Ya tienes una cuenta? Entrar' : '¿No tienes cuenta? Registrarme'}</Text></Pressable></View></View></View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Screen({ children, withNav = false, active, navigate, refreshing = false, onRefresh, onSwipeBack }) {
@@ -511,6 +587,7 @@ function Screen({ children, withNav = false, active, navigate, refreshing = fals
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [hydratingSession, setHydratingSession] = useState(true);
   const [route, setRoute] = useState('home');
   const [params, setParams] = useState(null);
   const [session, setSession] = useState(null);
@@ -531,11 +608,27 @@ export default function App() {
     if (route === 'alerts' || route === 'history' || route === 'profile') return navigate('home');
     return navigate('home');
   };
+  const persistSession = async (value) => {
+    if (value) {
+      await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(value));
+    } else {
+      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  };
+  const refreshSession = async (storedSession) => {
+    if (!storedSession?.refreshToken) throw new Error('No hay refresh token');
+    const refreshed = await apiRequest('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: storedSession.refreshToken }),
+    });
+    return { ...storedSession, ...refreshed };
+  };
   const login = async (payload) => {
     setSession(payload);
     setAuthenticated(true);
     setLoading(true);
     setError('');
+    await persistSession(payload);
     try {
       const [newsPayload, preferencesPayload] = await Promise.all([
         apiRequest('/news'),
@@ -561,6 +654,33 @@ export default function App() {
       setError(requestError.message);
     } finally { setLoading(false); }
   };
+  useEffect(() => {
+    let active = true;
+    const restoreSession = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+        if (!stored) return;
+        let savedSession = JSON.parse(stored);
+        try {
+          await apiRequest('/news');
+          await apiRequest('/preferences', {}, savedSession.token);
+        } catch (error) {
+          if (error.status !== 401) throw error;
+          savedSession = await refreshSession(savedSession);
+        }
+        if (active) await login(savedSession);
+      } catch (error) {
+        await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+        if (active) setError('');
+      } finally {
+        if (active) setHydratingSession(false);
+      }
+    };
+    restoreSession();
+    return () => {
+      active = false;
+    };
+  }, []);
   const loadActivity = async (token) => {
     setActivityLoading(true);
     setActivityError('');
@@ -607,6 +727,7 @@ export default function App() {
     }
   };
   const logout = () => {
+    persistSession(null).catch((storageError) => console.warn('No se pudo limpiar la sesión', storageError.message));
     setSession(null);
     setAuthenticated(false);
     setUpdatesFromApi([]);
@@ -615,17 +736,27 @@ export default function App() {
     setHistory([]);
     setRoute('home');
   };
+  const handleTokenRefreshed = (credentials) => {
+    setSession((current) => {
+      const updated = { ...current, token: credentials.token, refreshToken: credentials.refreshToken || current.refreshToken };
+      persistSession(updated).catch((storageError) => console.warn('No se pudo guardar la sesión renovada', storageError.message));
+      return updated;
+    });
+  };
+  if (hydratingSession) {
+    return <SafeAreaProvider><SafeAreaView style={styles.auth}><Text style={styles.statusText}>Cargando sesión...</Text></SafeAreaView></SafeAreaProvider>;
+  }
   const content = !authenticated
     ? <Auth onLogin={login} />
     : route === 'home' ? <Home navigate={navigate} updates={updatesFromApi} loading={loading} error={error} onRefresh={() => login(session)} />
       : route === 'news' ? <News navigate={navigate} updates={updatesFromApi} loading={loading} error={error} />
         : route === 'detail' ? (params || updatesFromApi[0] ? <Detail navigate={navigate} update={params || updatesFromApi[0]} onSwipeBack={goBack} onViewed={markViewed} /> : <EmptyState text="No hay una publicación seleccionada." />)
-          : route === 'filters' ? <Filters navigate={navigate} token={session.token} preferences={preferences} onSwipeBack={goBack} />
+          : route === 'filters' ? <Filters navigate={navigate} token={session.token} preferences={preferences} onPreferencesChanged={setPreferences} onSwipeBack={goBack} />
             : route === 'history' ? <History navigate={navigate} history={history} updates={updatesFromApi} loading={activityLoading} error={activityError} />
                 : route === 'alerts' ? <Alerts navigate={navigate} notifications={notifications} loading={activityLoading} error={activityError} onRead={markNotificationRead} />
                   : route === 'notification-preferences' ? <NotificationPreferences navigate={navigate} token={session.token} preferences={preferences} onPreferencesChanged={setPreferences} onSwipeBack={goBack} />
                   : route === 'legal' ? <LegalDocuments document={params?.document} onBack={goBack} />
-                : <Profile navigate={navigate} user={session.user} token={session.token} refreshToken={session.refreshToken} onTokenRefreshed={(credentials) => setSession((current) => ({ ...current, token: credentials.token, refreshToken: credentials.refreshToken || current.refreshToken }))} onUserUpdated={(user) => setSession((current) => ({ ...current, user }))} onAccountDeleted={logout} logout={logout} />;
+                : <Profile navigate={navigate} user={session.user} token={session.token} refreshToken={session.refreshToken} onTokenRefreshed={handleTokenRefreshed} onUserUpdated={(user) => setSession((current) => ({ ...current, user }))} onAccountDeleted={logout} logout={logout} />;
   return <SafeAreaProvider>{content}</SafeAreaProvider>;
 }
 
@@ -654,6 +785,6 @@ const styles = StyleSheet.create({
   profile: { alignItems: 'center', marginVertical: 18 }, avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: colors.gold, fontSize: 27, fontWeight: '800' }, profileName: { color: colors.navy, fontSize: 22, fontWeight: '800', marginTop: 13 }, editProfileLink: { color: colors.blue, fontWeight: '700', marginTop: 8 }, settingsCard: { backgroundColor: colors.white, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: 14 }, settingRow: { flexDirection: 'row', alignItems: 'center', padding: 17, borderBottomWidth: 1, borderBottomColor: colors.border }, supportOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(23, 21, 21, 0.55)' }, supportModal: { width: '100%', maxWidth: 380, borderRadius: 20, padding: 24, alignItems: 'center', backgroundColor: colors.white, shadowColor: '#000000', shadowOpacity: .2, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 }, supportIcon: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.goldSoft, marginBottom: 12 }, supportTitle: { color: colors.navy, fontSize: 20, fontWeight: '800', marginBottom: 8 }, supportText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center' },
   alertCard: { backgroundColor: colors.white, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 30, borderWidth: 1, borderColor: colors.border }, alertIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, flex: { flex: 1 }, countText: { color: colors.blue, fontSize: 12, fontWeight: '700' },   notificationRow: { backgroundColor: colors.white, borderRadius: 14, padding: 15, marginBottom: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border }, notificationUnread: { borderColor: '#D7A5B2', backgroundColor: '#FDF7F9' }, notificationRead: { opacity: .7 }, notificationDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.gold, marginRight: 12 }, notificationDotRead: { backgroundColor: colors.border }, notificationTitle: { color: colors.ink, fontSize: 15, lineHeight: 20, fontWeight: '700', marginBottom: 4 }, notificationTitleRead: { fontWeight: '500' }, empty: { alignItems: 'center', justifyContent: 'center', padding: 45, gap: 10 }, emptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#F1E6E9', alignItems: 'center', justifyContent: 'center', marginBottom: 3 }, emptyTitle: { color: colors.navy, fontSize: 16, fontWeight: '800', textAlign: 'center' }, emptyText: { textAlign: 'center', color: colors.muted, lineHeight: 22 },
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 82, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 9, shadowColor: '#000000', shadowOpacity: .08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 10 }, navItem: { alignItems: 'center', gap: 3, minWidth: 64, paddingHorizontal: 8 }, navItemActive: { }, navIcon: { width: 38, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, navIconActive: { backgroundColor: colors.navy }, navLabel: { color: colors.muted, fontSize: 11 }, navLabelActive: { color: colors.navy, fontWeight: '800' },
-  auth: { flex: 1, backgroundColor: colors.paper }, authKeyboard: { flex: 1 }, authInner: { flexGrow: 1, justifyContent: 'space-between', padding: 20, paddingTop: 52, paddingBottom: 28 }, logoCircle: { width: 180, height: 81, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, authLogo: { width: 180, height: 81 }, logoMark: { color: colors.gold, fontSize: 58, fontWeight: '900' }, authTitle: { color: colors.navy, fontSize: 37, fontWeight: '800', marginTop: 8 }, authSubtitle: { color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 9 }, authForm: { backgroundColor: colors.white, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 20, marginTop: 30, shadowColor: '#000000', shadowOpacity: .06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, formIntro: { color: colors.navy, fontSize: 21, fontWeight: '700', marginBottom: 8 }, formHint: { color: colors.muted, fontSize: 13, marginTop: 18 }, label: { color: colors.ink, fontWeight: '700', fontSize: 13, marginBottom: 7, marginTop: 14 }, input: { backgroundColor: colors.white, borderRadius: 13, padding: 15, fontSize: 16, color: colors.ink, borderWidth: 1, borderColor: colors.border },   authActions: { marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border }, authActionRow: { flexDirection: 'row', alignItems: 'stretch' }, authAction: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, authActionDivider: { borderRightWidth: 1, borderRightColor: colors.border }, authLink: { color: colors.gold, textAlign: 'center', fontSize: 13, lineHeight: 18, fontWeight: '700' }, inlineLink: { color: colors.gold, fontWeight: '700' }, specialtyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }, specialtyChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: colors.white }, specialtyChipSelected: { borderColor: colors.gold, backgroundColor: colors.goldSoft }, specialtyChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, specialtyChipTextSelected: { color: colors.gold }, consentRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 14 }, checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center', marginRight: 9 }, checkboxChecked: { backgroundColor: colors.gold, borderColor: colors.gold }, consentText: { flex: 1, color: colors.muted, lineHeight: 20 }, legalText: { color: colors.muted, fontSize: 15, lineHeight: 23, marginTop: 12 }, legalHeading: { color: colors.navy, fontSize: 17, fontWeight: '800', marginTop: 24 },
+  auth: { flex: 1, backgroundColor: colors.paper }, authKeyboard: { flex: 1 }, authInner: { flexGrow: 1, justifyContent: 'space-between', padding: 20, paddingTop: 52, paddingBottom: 28 }, authBrand: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 }, logoCircle: { width: 180, height: 81, alignItems: 'center', justifyContent: 'center' }, authLogo: { width: 180, height: 81 }, authInstitution: { flex: 1, color: colors.gold, fontSize: 11, lineHeight: 15, letterSpacing: 1.2, fontWeight: '800', marginLeft: 8 }, logoMark: { color: colors.gold, fontSize: 58, fontWeight: '900' }, authTitle: { color: colors.navy, fontSize: 37, fontWeight: '800', marginTop: 8 }, authSubtitle: { color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 9 }, authForm: { backgroundColor: colors.white, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 20, marginTop: 30, shadowColor: '#000000', shadowOpacity: .06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, formIntro: { color: colors.navy, fontSize: 21, fontWeight: '700', marginBottom: 8 }, formHint: { color: colors.muted, fontSize: 13, marginTop: 18 }, label: { color: colors.ink, fontWeight: '700', fontSize: 13, marginBottom: 7, marginTop: 14 }, input: { backgroundColor: colors.white, borderRadius: 13, padding: 15, fontSize: 16, color: colors.ink, borderWidth: 1, borderColor: colors.border }, floatingInput: { minHeight: 58, justifyContent: 'flex-end', borderWidth: 1, borderColor: colors.border, borderRadius: 13, paddingHorizontal: 15, marginTop: 14, backgroundColor: colors.white }, floatingLabel: { position: 'absolute', left: 15, top: 17, color: colors.muted, fontSize: 16 }, floatingLabelActive: { top: 7, color: colors.gold, fontSize: 11, fontWeight: '700' }, floatingTextInput: { padding: 0, paddingTop: 17, paddingBottom: 8, color: colors.ink, fontSize: 16 }, authActions: { marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border }, authActionRow: { flexDirection: 'row', alignItems: 'stretch' }, authAction: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, authActionDivider: { borderRightWidth: 1, borderRightColor: colors.border }, authLink: { color: colors.gold, textAlign: 'center', fontSize: 13, lineHeight: 18, fontWeight: '700' }, inlineLink: { color: colors.gold, fontWeight: '700' }, specialtyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 }, specialtyChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 8, backgroundColor: colors.white }, specialtyChipSelected: { borderColor: colors.gold, backgroundColor: colors.goldSoft }, specialtyChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, specialtyChipTextSelected: { color: colors.gold }, consentRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 14 }, checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center', marginRight: 9 }, checkboxChecked: { backgroundColor: colors.gold, borderColor: colors.gold }, consentText: { flex: 1, color: colors.muted, lineHeight: 20 }, legalText: { color: colors.muted, fontSize: 15, lineHeight: 23, marginTop: 12 }, legalHeading: { color: colors.navy, fontSize: 17, fontWeight: '800', marginTop: 24 },
   statusText: { color: colors.muted, textAlign: 'center', paddingVertical: 28 }, errorText: { color: colors.danger, backgroundColor: '#FBEAEA', borderRadius: 12, padding: 13, marginBottom: 14, lineHeight: 20 },
 });

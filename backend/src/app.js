@@ -46,6 +46,37 @@ function userData(user, name) {
   };
 }
 
+async function deleteFirestoreDocumentsForUsers(db, collectionName, userIds, email) {
+  const snapshot = await db.collection(collectionName).get();
+  const normalizedEmail = email ? email.trim().toLowerCase() : '';
+  const references = snapshot.docs
+    .filter((doc) => {
+      const data = doc.data();
+      const values = [doc.id, data.uid, data.userId, data.userUid, data.email, data.userEmail]
+        .filter((value) => typeof value === 'string');
+      return values.some((value) => userIds.has(value)
+        || (normalizedEmail && value.toLowerCase() === normalizedEmail));
+    })
+    .map((doc) => doc.ref);
+
+  for (let offset = 0; offset < references.length; offset += 400) {
+    const batch = db.batch();
+    references.slice(offset, offset + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+async function findFirebaseUsersByEmail(auth, email) {
+  const matches = [];
+  let pageToken;
+  do {
+    const page = await auth.listUsers(1000, pageToken);
+    matches.push(...page.users.filter((user) => user.email?.toLowerCase() === email.toLowerCase()));
+    pageToken = page.pageToken;
+  } while (pageToken);
+  return matches;
+}
+
 app.get('/', (req, res) => {
   res.json({ message: 'Marco Legal API funcionando con Firebase' });
 });
@@ -68,7 +99,6 @@ app.post('/register', async (req, res, next) => {
     password,
     name,
     barNumber,
-    barAssociation,
     specialties,
     termsAccepted,
     privacyAccepted
@@ -82,7 +112,6 @@ app.post('/register', async (req, res, next) => {
     return res.status(400).json({ error: 'Terms and privacy policy acceptance is required' });
   }
   if ((barNumber != null && (!isNonEmptyString(barNumber) || barNumber.trim().length > 50))
-    || (barAssociation != null && (!isNonEmptyString(barAssociation) || barAssociation.trim().length > 100))
     || (specialties != null && (!Array.isArray(specialties)
       || specialties.length > 10
       || specialties.some((specialty) => !isNonEmptyString(specialty) || specialty.trim().length > 60)))) {
@@ -106,7 +135,6 @@ app.post('/register', async (req, res, next) => {
     await db.collection('users').doc(user.uid).set({
       ...userData(user, name),
       ...(isNonEmptyString(barNumber) ? { barNumber: barNumber.trim() } : {}),
-      ...(isNonEmptyString(barAssociation) ? { barAssociation: barAssociation.trim() } : {}),
       ...(Array.isArray(specialties) ? { specialties: specialties.map((specialty) => specialty.trim()) } : {})
     });
     const consent = {
@@ -118,9 +146,11 @@ app.post('/register', async (req, res, next) => {
     };
     await db.collection('consents').doc(user.uid).set(consent);
     await db.collection('preferences').doc(user.uid).set({
+      uid: user.uid,
+      email: user.email,
       emailNotifications: true,
       pushNotifications: true,
-      categories: [],
+      categories: Array.isArray(specialties) ? specialties.map((specialty) => specialty.trim()) : [],
       updatedAt: new Date().toISOString()
     });
 
@@ -169,6 +199,16 @@ app.post('/password-reset/confirm', async (req, res, next) => {
     }
     next(error);
   }
+});
+
+app.post('/auth/password-reset/request', (req, res, next) => {
+  req.url = '/password-reset/request';
+  return app._router.handle(req, res, next);
+});
+
+app.post('/auth/password-reset/confirm', (req, res, next) => {
+  req.url = '/password-reset/confirm';
+  return app._router.handle(req, res, next);
 });
 
 app.post('/login', async (req, res, next) => {
@@ -249,24 +289,28 @@ app.delete('/account', requireAuth, async (req, res, next) => {
   }
   try {
     const { auth, db } = getFirebase();
+    const email = req.user.email || '';
+    const firebaseUsers = email ? await findFirebaseUsersByEmail(auth, email) : [];
+    const userIds = new Set([req.user.uid, ...firebaseUsers.map((user) => user.uid)]);
     const collections = ['users', 'preferences', 'consents', 'history', 'notifications', 'deviceTokens'];
     for (const collectionName of collections) {
-      const snapshot = await db.collection(collectionName).where('userId', '==', req.user.uid).get();
-      const references = snapshot.docs.map((doc) => doc.ref);
-      if (collectionName === 'users' || collectionName === 'preferences' || collectionName === 'consents') {
-        references.push(db.collection(collectionName).doc(req.user.uid));
-      }
-      for (let offset = 0; offset < references.length; offset += 400) {
-        const batch = db.batch();
-        references.slice(offset, offset + 400).forEach((ref) => batch.delete(ref));
-        await batch.commit();
-      }
+      await deleteFirestoreDocumentsForUsers(db, collectionName, userIds, email);
     }
-    await auth.deleteUser(req.user.uid);
+    for (const user of firebaseUsers) {
+      await auth.deleteUser(user.uid);
+    }
+    if (!firebaseUsers.some((user) => user.uid === req.user.uid)) {
+      await auth.deleteUser(req.user.uid);
+    }
     res.json({ deleted: true });
   } catch (error) {
     next(error);
   }
+});
+
+app.delete('/auth/account', requireAuth, (req, res, next) => {
+  req.url = '/account';
+  return app._router.handle(req, res, next);
 });
 
 app.get('/profile', requireAuth, async (req, res, next) => {
@@ -383,13 +427,36 @@ app.get('/preferences', requireAuth, async (req, res, next) => {
     const { db } = getFirebase();
     let snapshot = await db.collection('preferences').doc(req.user.uid).get();
     if (!snapshot.exists) {
-      const matches = await db.collection('preferences').where('uid', '==', req.user.uid).limit(1).get();
-      snapshot = matches.docs[0] || snapshot;
+      const [uidMatches, userIdMatches, emailMatches] = await Promise.all([
+        db.collection('preferences').where('uid', '==', req.user.uid).limit(1).get(),
+        db.collection('preferences').where('userId', '==', req.user.uid).limit(1).get(),
+        req.user.email
+          ? db.collection('preferences').where('email', '==', req.user.email.toLowerCase()).limit(1).get()
+          : Promise.resolve({ docs: [] }),
+      ]);
+      snapshot = uidMatches.docs[0] || userIdMatches.docs[0] || emailMatches.docs[0] || snapshot;
     }
     if (!snapshot.exists) {
-      return res.status(404).json({ error: 'Preferences not found' });
+      const preferences = {
+        emailNotifications: true,
+        pushNotifications: true,
+        categories: [],
+        updatedAt: new Date().toISOString()
+      };
+      await db.collection('preferences').doc(req.user.uid).set(preferences);
+      return res.json({ preferences });
     }
-    res.json({ preferences: snapshot.data() });
+    const preferences = snapshot.data();
+    const userSnapshot = await db.collection('users').doc(req.user.uid).get();
+    const profileCategories = userSnapshot.exists && Array.isArray(userSnapshot.data().specialties)
+      ? userSnapshot.data().specialties.filter((category) => typeof category === 'string')
+      : [];
+    if ((!Array.isArray(preferences.categories) || preferences.categories.length === 0)
+      && profileCategories.length > 0) {
+      preferences.categories = profileCategories;
+      await db.collection('preferences').doc(req.user.uid).set({ categories: profileCategories }, { merge: true });
+    }
+    res.json({ preferences });
   } catch (error) {
     next(error);
   }
@@ -410,6 +477,8 @@ app.put('/preferences', requireAuth, async (req, res, next) => {
 
   try {
     const preferences = {
+      uid: req.user.uid,
+      email: req.user.email?.toLowerCase() || null,
       emailNotifications,
       pushNotifications,
       categories,

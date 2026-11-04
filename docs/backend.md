@@ -124,11 +124,18 @@ Las rutas protegidas requieren `Authorization: Bearer <Firebase ID token>`.
   revelar si el correo está registrado.
 - `POST /password-reset/confirm`: valida el código temporal de Firebase y
   actualiza la contraseña.
-- `DELETE /account`: elimina la cuenta autenticada y sus datos asociados
+  También están disponibles las rutas `/auth/password-reset/request` y
+  `/auth/password-reset/confirm` para clientes que agrupan las operaciones
+  bajo el prefijo de autenticación.
+- `DELETE /account`: elimina la cuenta autenticada y todos los datos asociados
   (perfil, preferencias, consentimientos, historial, avisos y dispositivos).
+  También limpia registros antiguos relacionados por UID, ID de documento o
+  correo y elimina cuentas Firebase duplicadas con el mismo correo.
 - `PATCH /notifications/:notificationId/read`: marca un aviso como leído.
 - `GET /news`: lista noticias publicadas.
-- `GET /preferences` y `PUT /preferences`: gestiona preferencias.
+- `GET /preferences` y `PUT /preferences`: gestiona preferencias. Si no existe
+  el documento, `GET` crea preferencias predeterminadas; las materias elegidas
+  durante el registro se guardan inicialmente en `categories`.
 - `POST /devices/token` y `DELETE /devices/token`: registra y desactiva
   tokens de dispositivos.
 - `POST /notifications/send`: envía FCM a tokens activos y desactiva los

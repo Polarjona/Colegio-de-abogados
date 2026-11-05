@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 400" width="100%" height="100%">
+  <defs>
+    <style>
+      .logo-font {
+        font-family: "Times New Roman", Times, Georgia, serif;
+        font-size: 350px;
+        letter-spacing: -2px;
+      }
+      .color-gray {
+        fill: #b4afaa; /* Color gris/arena extraído del original */
+      }
+      .color-red {
+        fill: #c61a3c; /* Color rojo carmesí extraído del original */
+      }
+    </style>
+  </defs>
+  <text x="30" y="310" class="logo-font">
+    <tspan class="color-gray">ICA</tspan><tspan class="color-red">T</tspan>
+  </text>
+</svg>
